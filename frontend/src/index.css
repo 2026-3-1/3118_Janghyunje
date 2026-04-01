@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Pretendard', system-ui, sans-serif;
+  @apply bg-gray-50 text-gray-900 dark:bg-[#0d0f14] dark:text-slate-100;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { @apply bg-gray-100 dark:bg-[#1a1d2e]; }
+::-webkit-scrollbar-thumb { @apply bg-gray-300 dark:bg-[#3b3f5c] rounded; }
+::-webkit-scrollbar-thumb:hover { @apply bg-brand-500; }
