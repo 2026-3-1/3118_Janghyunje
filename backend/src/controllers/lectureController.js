@@ -3,7 +3,7 @@ import pool from '../db/index.js'
 // GET /api/lectures
 export const getLectures = async (req, res, next) => {
   try {
-    const { game, tier, maxPrice, keyword, coachType, position, sort } = req.query
+    const { game, tier, maxPrice, keyword, coachType, position, sort, coach_id } = req.query
 
     let sql = `
       SELECT
@@ -17,9 +17,18 @@ export const getLectures = async (req, res, next) => {
       JOIN users u ON l.coach_id = u.id
       LEFT JOIN reviews r ON r.lecture_id = l.id
       LEFT JOIN applications a ON a.lecture_id = l.id AND a.status = 'approved'
-      WHERE l.status = 'active'
+      WHERE 1=1
     `
     const params = []
+
+    // 버그 수정: coach_id로 본인 강의 목록 조회 (status 무관하게 전체 조회)
+    if (coach_id) {
+      sql += ' AND l.coach_id = ?'
+      params.push(Number(coach_id))
+    } else {
+      // 일반 목록은 active 강의만
+      sql += " AND l.status = 'active'"
+    }
 
     if (game && game !== 'all') { sql += ' AND l.game = ?';         params.push(game) }
     if (tier && tier !== 'all') { sql += ' AND l.target_tier = ?';  params.push(tier) }

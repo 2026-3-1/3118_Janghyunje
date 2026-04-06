@@ -33,6 +33,7 @@ export default function App() {
             <Route path="/register"                            element={<RegisterPage />} />
             <Route path="/coach/dashboard"                     element={<CoachDashboard />} />
             <Route path="/coach/lecture/new"                   element={<LectureRegisterPage />} />
+            <Route path="/coach/lecture/edit/:id"              element={<LectureRegisterPage />} />
           </Routes>
         </main>
         <Footer />

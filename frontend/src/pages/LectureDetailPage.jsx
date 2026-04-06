@@ -65,7 +65,6 @@ export default function LectureDetailPage() {
       showToast('수강 신청이 완료되었습니다. 코치 승인을 기다려주세요.', 'success')
     } catch (err) {
       const msg = err.response?.data?.message || '신청 중 오류가 발생했습니다.'
-      // 이미 신청한 경우
       if (err.response?.status === 409) {
         setApplicationStatus('pending')
         showToast('이미 수강 신청된 강의입니다.')
@@ -88,8 +87,14 @@ export default function LectureDetailPage() {
     success: 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-600 dark:text-green-400',
   }
 
+  // 버그 수정: 코치 본인 강의 여부
+  const isMyLecture = user?.id === lecture.coach_id
+
   // 신청 버튼 렌더링 결정
   const renderApplyButton = () => {
+    // 버그 수정: 본인 강의면 신청 버튼 자체를 숨김
+    if (isMyLecture) return null
+
     if (applicationStatus) {
       const s = APPLICATION_STATUS[applicationStatus]
       return (
@@ -197,8 +202,8 @@ export default function LectureDetailPage() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {/* 승인된 수강생 or 코치 → 강의 수강 버튼 */}
-            {(applicationStatus === 'approved' || user?.id === lecture.coach_id) && (
+            {/* 승인된 수강생 또는 본인 강의 코치 → 강의 수강 버튼 */}
+            {(applicationStatus === 'approved' || isMyLecture) && (
               <button
                 onClick={() => navigate(`/lectures/${id}/contents`)}
                 className="px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold text-sm rounded-xl transition-colors">

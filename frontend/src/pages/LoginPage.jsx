@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { login } from '../services/lectureService'
 import useAuthStore from '../store/useAuthStore'
@@ -13,9 +13,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [rememberEmail, setRememberEmail] = useState(!!savedEmail)
 
+  // 에러 메시지는 여기서 절대 지우지 않음 — 사용자가 ✕ 누르거나 로그인 성공 시에만 사라짐
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
-    setError('')
   }
 
   const handleSubmit = async () => {
@@ -23,16 +23,16 @@ export default function LoginPage() {
       setError('이메일과 비밀번호를 입력해주세요.')
       return
     }
+    // 에러 초기화를 여기서도 하지 않음 — 로그인 결과에 따라서만 변경
     setLoading(true)
     try {
       const res = await login(form)
-      // 아이디 저장 처리
       if (rememberEmail) localStorage.setItem('savedEmail', form.email)
       else localStorage.removeItem('savedEmail')
+      setError('')
       setUser(res.data)
       navigate('/')
     } catch (err) {
-      // 비밀번호만 초기화, 이메일 유지
       setForm(prev => ({ ...prev, password: '' }))
       setError(err.response?.data?.message || '로그인에 실패했습니다.')
     } finally {
@@ -40,7 +40,6 @@ export default function LoginPage() {
     }
   }
 
-  // Enter키 로그인
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') handleSubmit()
   }
@@ -57,7 +56,6 @@ export default function LoginPage() {
 
         <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-2xl p-6 space-y-4">
 
-          {/* 에러 메시지 — 사라지지 않음 */}
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5 text-sm text-red-600 dark:text-red-400 flex items-center justify-between">
               <span>{error}</span>
@@ -89,11 +87,13 @@ export default function LoginPage() {
             />
           </div>
 
-          {/* 아이디 저장 */}
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox" checked={rememberEmail}
-              onChange={e => setRememberEmail(e.target.checked)}
+              onChange={e => {
+                setRememberEmail(e.target.checked)
+                if (!e.target.checked) localStorage.removeItem('savedEmail')
+              }}
               className="w-4 h-4 accent-brand-500 cursor-pointer"
             />
             <span className="text-xs text-gray-500 dark:text-[#8892a4]">아이디 저장</span>

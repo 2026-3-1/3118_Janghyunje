@@ -7,6 +7,13 @@ export const applyLecture = async (req, res, next) => {
     if (!lecture_id || !student_id)
       return res.status(400).json({ success: false, message: '필수 항목이 누락됐습니다.' })
 
+    // 버그 수정: 코치가 본인 강의를 신청하는 것 차단
+    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [lecture_id])
+    if (!lectures.length)
+      return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
+    if (lectures[0].coach_id === student_id)
+      return res.status(403).json({ success: false, message: '본인이 등록한 강의는 신청할 수 없습니다.' })
+
     const [result] = await pool.query(
       'INSERT INTO applications (lecture_id, student_id) VALUES (?, ?)',
       [lecture_id, student_id]
