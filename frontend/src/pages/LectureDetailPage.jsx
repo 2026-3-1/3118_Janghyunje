@@ -5,11 +5,36 @@ import { TierBadge, GameBadge, StarRating, CardBadge, LoadingScreen } from '../c
 import useAuthStore from '../store/useAuthStore'
 import api from '../services/api'
 
-// 신청 상태별 버튼 스타일/텍스트
 const APPLICATION_STATUS = {
   pending:  { label: '검토 중',  cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 cursor-default' },
   approved: { label: '수강 중',  cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 cursor-default' },
   rejected: { label: '거절됨',   cls: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 cursor-default' },
+}
+
+// 별점 클릭 컴포넌트
+function StarPicker({ value, onChange }) {
+  const [hovered, setHovered] = useState(0)
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          onMouseEnter={() => setHovered(n)}
+          onMouseLeave={() => setHovered(0)}
+          className="text-2xl leading-none transition-transform hover:scale-110"
+        >
+          <span className={(hovered || value) >= n ? 'text-yellow-400' : 'text-gray-200 dark:text-gray-700'}>
+            ★
+          </span>
+        </button>
+      ))}
+      <span className="ml-2 text-sm text-gray-400 dark:text-[#6b7280] self-center">
+        {(hovered || value) > 0 ? ['', '별로예요', '그저 그래요', '괜찮아요', '좋아요', '최고예요'][hovered || value] : '별점을 선택하세요'}
+      </span>
+    </div>
+  )
 }
 
 export default function LectureDetailPage() {
@@ -20,12 +45,28 @@ export default function LectureDetailPage() {
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
-  const [applicationStatus, setApplicationStatus] = useState(null) // null | 'pending' | 'approved' | 'rejected'
+  const [applicationStatus, setApplicationStatus] = useState(null)
   const [toast, setToast] = useState({ msg: '', type: '' })
+
+  // 리뷰 작성 상태
+  const [reviewRating, setReviewRating] = useState(0)
+  const [reviewComment, setReviewComment] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [alreadyReviewed, setAlreadyReviewed] = useState(false)
 
   const showToast = (msg, type = 'error') => {
     setToast({ msg, type })
     setTimeout(() => setToast({ msg: '', type: '' }), 3000)
+  }
+
+  const loadReviews = async () => {
+    const r = await getReviewsByLectureId(id)
+    setReviews(r)
+    // 내가 이미 작성했는지 확인
+    if (user) {
+      const mine = r.find(rv => rv.student_id === user.id)
+      if (mine) setAlreadyReviewed(true)
+    }
   }
 
   useEffect(() => {
@@ -33,6 +74,10 @@ export default function LectureDetailPage() {
       .then(([l, r]) => {
         setLecture(l)
         setReviews(r)
+        if (user) {
+          const mine = r.find(rv => rv.student_id === user.id)
+          if (mine) setAlreadyReviewed(true)
+        }
         const prev = JSON.parse(localStorage.getItem('recentLectures') || '[]')
         const next = [l.id, ...prev.filter(rid => rid !== l.id)].slice(0, 5)
         localStorage.setItem('recentLectures', JSON.stringify(next))
@@ -41,7 +86,6 @@ export default function LectureDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  // 로그인 상태면 이미 신청한 강의인지 확인
   useEffect(() => {
     if (!user) return
     api.get('/applications/student', { params: { student_id: user.id } })
@@ -53,10 +97,7 @@ export default function LectureDetailPage() {
   }, [id, user])
 
   const handleApply = async () => {
-    if (!user) {
-      showToast('로그인 후 수강 신청이 가능합니다.')
-      return
-    }
+    if (!user) { showToast('로그인 후 수강 신청이 가능합니다.'); return }
     if (applicationStatus || applying) return
     setApplying(true)
     try {
@@ -76,6 +117,34 @@ export default function LectureDetailPage() {
     }
   }
 
+  const handleReviewSubmit = async () => {
+    if (!reviewRating) { showToast('별점을 선택해주세요.'); return }
+    if (!reviewComment.trim()) { showToast('후기 내용을 입력해주세요.'); return }
+    setSubmittingReview(true)
+    try {
+      await api.post('/reviews', {
+        lecture_id: Number(id),
+        student_id: user.id,
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      })
+      showToast('후기가 등록되었습니다!', 'success')
+      setAlreadyReviewed(true)
+      setReviewRating(0)
+      setReviewComment('')
+      await loadReviews()
+    } catch (err) {
+      if (err.response?.status === 409) {
+        showToast('이미 후기를 작성하셨습니다.')
+        setAlreadyReviewed(true)
+      } else {
+        showToast(err.response?.data?.message || '후기 등록에 실패했습니다.')
+      }
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
+
   if (loading) return <LoadingScreen />
 
   const discountRate = lecture.originalPrice
@@ -87,14 +156,12 @@ export default function LectureDetailPage() {
     success: 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-600 dark:text-green-400',
   }
 
-  // 버그 수정: 코치 본인 강의 여부
   const isMyLecture = user?.id === lecture.coach_id
+  // 리뷰 작성 가능 조건: 학생 + approved 상태 + 아직 작성 안 함
+  const canWriteReview = user && !isMyLecture && applicationStatus === 'approved' && !alreadyReviewed
 
-  // 신청 버튼 렌더링 결정
   const renderApplyButton = () => {
-    // 버그 수정: 본인 강의면 신청 버튼 자체를 숨김
     if (isMyLecture) return null
-
     if (applicationStatus) {
       const s = APPLICATION_STATUS[applicationStatus]
       return (
@@ -202,7 +269,6 @@ export default function LectureDetailPage() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {/* 승인된 수강생 또는 본인 강의 코치 → 강의 수강 버튼 */}
             {(applicationStatus === 'approved' || isMyLecture) && (
               <button
                 onClick={() => navigate(`/lectures/${id}/contents`)}
@@ -221,7 +287,62 @@ export default function LectureDetailPage() {
         </div>
       </div>
 
-      {/* 리뷰 */}
+      {/* ── 리뷰 작성 폼 ── */}
+      {canWriteReview && (
+        <div className="bg-white dark:bg-[#13161e] border border-brand-200 dark:border-brand-500/30 rounded-xl p-5 space-y-4">
+          <h2 className="text-sm font-bold text-gray-800 dark:text-white">후기 작성</h2>
+
+          {/* 별점 */}
+          <div>
+            <p className="text-xs text-gray-400 dark:text-[#6b7280] mb-2">별점</p>
+            <StarPicker value={reviewRating} onChange={setReviewRating} />
+          </div>
+
+          {/* 텍스트 */}
+          <div>
+            <p className="text-xs text-gray-400 dark:text-[#6b7280] mb-2">후기 내용</p>
+            <textarea
+              value={reviewComment}
+              onChange={e => setReviewComment(e.target.value)}
+              placeholder="수강 후기를 자유롭게 작성해주세요."
+              rows={4}
+              maxLength={500}
+              className="w-full rounded-xl border border-gray-200 dark:border-[#2a2d3e] bg-gray-50 dark:bg-[#0d0f14]
+                         text-gray-800 dark:text-slate-200 text-sm px-4 py-3 resize-none outline-none
+                         focus:border-brand-400 dark:focus:border-brand-500 transition-colors
+                         placeholder:text-gray-300 dark:placeholder:text-[#4a5568]"
+            />
+            <p className="text-right text-xs text-gray-300 dark:text-[#4a5568] mt-1">{reviewComment.length} / 500</p>
+          </div>
+
+          <button
+            onClick={handleReviewSubmit}
+            disabled={submittingReview}
+            className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors
+              ${submittingReview
+                ? 'bg-brand-300 text-white cursor-wait'
+                : 'bg-brand-500 hover:bg-brand-600 text-white'
+              }`}>
+            {submittingReview ? '등록 중...' : '후기 등록하기'}
+          </button>
+        </div>
+      )}
+
+      {/* 이미 작성한 경우 안내 */}
+      {user && !isMyLecture && applicationStatus === 'approved' && alreadyReviewed && (
+        <div className="bg-gray-50 dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4 text-center text-sm text-gray-400 dark:text-[#6b7280]">
+          ✓ 이미 후기를 작성하셨습니다.
+        </div>
+      )}
+
+      {/* 수강 승인 전 안내 */}
+      {user && !isMyLecture && applicationStatus === 'pending' && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 rounded-xl p-4 text-center text-sm text-amber-600 dark:text-amber-400">
+          코치 승인 후 후기를 작성할 수 있습니다.
+        </div>
+      )}
+
+      {/* 리뷰 목록 */}
       <div className="space-y-3">
         <h2 className="text-sm font-bold text-gray-700 dark:text-white">수강 후기 ({reviews.length})</h2>
         {reviews.length === 0 ? (
