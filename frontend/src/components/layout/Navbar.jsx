@@ -13,7 +13,6 @@ export default function Navbar() {
   const dropdownRef = useRef(null)
   const savedColor = localStorage.getItem('avatarColor') || 'bg-indigo-500'
 
-  // 드롭다운 바깥 클릭 시 닫기
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -25,9 +24,10 @@ export default function Navbar() {
   }, [])
 
   const navLinks = [
-    { path: '/',         label: '홈' },
-    { path: '/lectures', label: '강의 목록' },
-    { path: '/mypage',   label: '내 수강' },
+    { path: '/',           label: '홈' },
+    { path: '/lectures',   label: '강의 목록' },
+    { path: '/community',  label: '커뮤니티' },
+    { path: '/mypage',     label: '내 수강' },
   ]
 
   const isActive = (path) =>
@@ -80,7 +80,6 @@ export default function Navbar() {
 
             {user ? (
               <div className="relative hidden md:block" ref={dropdownRef}>
-                {/* 프로필 버튼 */}
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                   className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-[#1a1d2e] transition-colors"
@@ -95,10 +94,8 @@ export default function Navbar() {
                   <span className={`text-gray-400 text-xs transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}>▾</span>
                 </button>
 
-                {/* 드롭다운 */}
                 {dropdownOpen && (
                   <div className="absolute right-0 top-full mt-1.5 w-52 bg-white dark:bg-[#1a1d2e] border border-gray-100 dark:border-[#2a2d3e] rounded-xl shadow-lg overflow-hidden z-50">
-                    {/* 유저 정보 */}
                     <div className="px-4 py-3 border-b border-gray-50 dark:border-[#2a2d3e]">
                       <div className="flex items-center gap-2.5">
                         <div className={`w-9 h-9 rounded-full ${savedColor} flex items-center justify-center text-sm font-bold text-white select-none shrink-0`}>
@@ -111,32 +108,27 @@ export default function Navbar() {
                       </div>
                     </div>
 
-                    {/* 메뉴 항목 */}
                     <div className="py-1.5">
-                      <button
-                        onClick={() => { setDropdownOpen(false); navigate('/mypage') }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left"
-                      >
+                      <button onClick={() => { setDropdownOpen(false); navigate('/mypage') }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
                         <span className="text-base">📋</span> 내 수강 목록
                       </button>
-                      <button
-                        onClick={() => { setDropdownOpen(false); navigate('/profile') }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left"
-                      >
+                      <button onClick={() => { setDropdownOpen(false); navigate('/community') }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
+                        <span className="text-base">💬</span> 커뮤니티
+                      </button>
+                      <button onClick={() => { setDropdownOpen(false); navigate('/profile') }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
                         <span className="text-base">⚙️</span> 프로필 설정
                       </button>
                       {user.role === 'coach' && (
                         <>
-                          <button
-                            onClick={() => { setDropdownOpen(false); navigate('/coach/lecture/new') }}
-                            className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left"
-                          >
+                          <button onClick={() => { setDropdownOpen(false); navigate('/coach/lecture/new') }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
                             <span className="text-base">➕</span> 강의 등록
                           </button>
-                          <button
-                            onClick={() => { setDropdownOpen(false); navigate('/coach/dashboard') }}
-                            className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left"
-                          >
+                          <button onClick={() => { setDropdownOpen(false); navigate('/coach/dashboard') }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
                             <span className="text-base">🏆</span> 수강 신청 관리
                           </button>
                         </>
@@ -163,7 +155,6 @@ export default function Navbar() {
               </div>
             )}
 
-            {/* 모바일 햄버거 */}
             <button className="md:hidden p-2 text-gray-400 dark:text-[#8892a4] hover:text-gray-700 dark:hover:text-white"
               onClick={() => setMenuOpen(!menuOpen)}>
               <div className="space-y-1.5 w-5">
@@ -175,7 +166,6 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* 모바일 메뉴 */}
         {menuOpen && (
           <div className="md:hidden border-t border-gray-100 dark:border-[#1e2235] bg-white dark:bg-[#13161e] px-4 py-2">
             {navLinks.map(({ path, label }) => (
@@ -205,8 +195,6 @@ export default function Navbar() {
           </div>
         )}
       </nav>
-
-      {/* 프로필 모달 */}
     </>
   )
 }

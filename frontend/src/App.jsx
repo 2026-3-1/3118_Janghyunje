@@ -13,6 +13,9 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import CoachDashboard from './pages/CoachDashboard'
 import LectureRegisterPage from './pages/LectureRegisterPage'
+import CommunityPage from './pages/CommunityPage'
+import CommunityDetailPage from './pages/CommunityDetailPage'
+import CommunityWritePage from './pages/CommunityWritePage'
 
 export default function App() {
   return (
@@ -34,6 +37,10 @@ export default function App() {
             <Route path="/coach/dashboard"                     element={<CoachDashboard />} />
             <Route path="/coach/lecture/new"                   element={<LectureRegisterPage />} />
             <Route path="/coach/lecture/edit/:id"              element={<LectureRegisterPage />} />
+            <Route path="/community"                           element={<CommunityPage />} />
+            <Route path="/community/write"                     element={<CommunityWritePage />} />
+            <Route path="/community/edit/:id"                  element={<CommunityWritePage />} />
+            <Route path="/community/:id"                       element={<CommunityDetailPage />} />
           </Routes>
         </main>
         <Footer />
