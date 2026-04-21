@@ -2,47 +2,55 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import useThemeStore from '../../store/useThemeStore'
 import useAuthStore from '../../store/useAuthStore'
+import api from '../../services/api'
 
 export default function Navbar() {
   const location = useLocation()
-  const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const navigate  = useNavigate()
+  const [menuOpen, setMenuOpen]         = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [cartCount, setCartCount]       = useState(0)
   const { dark, toggle } = useThemeStore()
   const { user, logout } = useAuthStore()
   const dropdownRef = useRef(null)
-  const savedColor = localStorage.getItem('avatarColor') || 'bg-indigo-500'
+  const savedColor  = localStorage.getItem('avatarColor') || 'bg-indigo-500'
 
   useEffect(() => {
-    const handleClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setDropdownOpen(false)
-      }
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false)
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // 장바구니 수량 — user + token 둘 다 있을 때만 호출 (무한루프 방지)
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!user || !token) { setCartCount(0); return }
+    api.get('/cart')
+      .then(res => setCartCount((res.data.data || []).length))
+      .catch(() => {})
+  }, [user, location.pathname])
+
   const navLinks = [
-    { path: '/',           label: '홈' },
-    { path: '/lectures',   label: '강의 목록' },
-    { path: '/community',  label: '커뮤니티' },
-    { path: '/mypage',     label: '내 수강' },
+    { path: '/',          label: '홈' },
+    { path: '/lectures',  label: '강의 목록' },
+    { path: '/community', label: '커뮤니티' },
+    { path: '/mypage',    label: '내 수강' },
   ]
 
   const isActive = (path) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
 
   const handleLogout = () => {
-    logout()
-    setDropdownOpen(false)
-    navigate('/')
+    logout(); setDropdownOpen(false); navigate('/')
   }
 
   return (
     <>
       <nav className="sticky top-0 z-50 bg-white dark:bg-[#13161e] border-b border-gray-100 dark:border-[#1e2235]">
-        <div className="flex items-center max-w-6xl gap-4 px-4 mx-auto" style={{height:'52px'}}>
+        <div className="flex items-center max-w-6xl gap-4 px-4 mx-auto" style={{ height: '52px' }}>
+
           <Link to="/" className="flex items-center gap-1.5 shrink-0">
             <div className="flex items-center justify-center text-xs font-bold text-white rounded-lg w-7 h-7 bg-brand-500">G</div>
             <span className="text-base font-extrabold tracking-tight text-brand-500">GCP</span>
@@ -54,18 +62,23 @@ export default function Navbar() {
                 className={`px-3 py-1.5 rounded-lg text-sm transition-colors
                   ${isActive(path)
                     ? 'text-brand-500 bg-brand-50 dark:bg-[#1e2235] font-medium'
-                    : 'text-gray-500 dark:text-[#8892a4] hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'
-                  }`}>
+                    : 'text-gray-500 dark:text-[#8892a4] hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'}`}>
                 {label}
               </Link>
             ))}
+            {user?.role === 'student' && (
+              <Link to="/growth"
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors
+                  ${isActive('/growth') ? 'text-brand-500 bg-brand-50 dark:bg-[#1e2235] font-medium'
+                  : 'text-gray-500 dark:text-[#8892a4] hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'}`}>
+                성장 분석
+              </Link>
+            )}
             {user?.role === 'coach' && (
               <Link to="/coach/dashboard"
                 className={`px-3 py-1.5 rounded-lg text-sm transition-colors
-                  ${isActive('/coach')
-                    ? 'text-brand-500 bg-brand-50 dark:bg-[#1e2235] font-medium'
-                    : 'text-gray-500 dark:text-[#8892a4] hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'
-                  }`}>
+                  ${isActive('/coach') ? 'text-brand-500 bg-brand-50 dark:bg-[#1e2235] font-medium'
+                  : 'text-gray-500 dark:text-[#8892a4] hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'}`}>
                 수강 관리
               </Link>
             )}
@@ -78,12 +91,24 @@ export default function Navbar() {
               {dark ? '☀️' : '🌙'}
             </button>
 
+            {/* 장바구니 */}
+            {user && (
+              <button onClick={() => navigate('/cart')}
+                className="relative w-8 h-8 rounded-lg border border-gray-200 dark:border-[#2a2d3e] bg-white dark:bg-[#1a1d2e]
+                           flex items-center justify-center text-base hover:border-brand-400 transition-colors">
+                🛒
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {cartCount > 9 ? '9+' : cartCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {user ? (
               <div className="relative hidden md:block" ref={dropdownRef}>
-                <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-[#1a1d2e] transition-colors"
-                >
+                <button onClick={() => setDropdownOpen(!dropdownOpen)}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-[#1a1d2e] transition-colors">
                   <div className={`w-6 h-6 rounded-full ${savedColor} flex items-center justify-center text-[11px] font-bold text-white select-none`}>
                     {user.nickname?.[0]?.toUpperCase()}
                   </div>
@@ -98,12 +123,12 @@ export default function Navbar() {
                   <div className="absolute right-0 top-full mt-1.5 w-52 bg-white dark:bg-[#1a1d2e] border border-gray-100 dark:border-[#2a2d3e] rounded-xl shadow-lg overflow-hidden z-50">
                     <div className="px-4 py-3 border-b border-gray-50 dark:border-[#2a2d3e]">
                       <div className="flex items-center gap-2.5">
-                        <div className={`w-9 h-9 rounded-full ${savedColor} flex items-center justify-center text-sm font-bold text-white select-none shrink-0`}>
+                        <div className={`w-9 h-9 rounded-full ${savedColor} flex items-center justify-center text-sm font-bold text-white shrink-0`}>
                           {user.nickname?.[0]?.toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate dark:text-white">{user.nickname}</p>
-                          <p className="text-xs text-gray-400 dark:text-[#6b7280] truncate">{user.email}</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user.nickname}</p>
+                          <p className="text-xs text-gray-400 truncate">{user.email}</p>
                         </div>
                       </div>
                     </div>
@@ -113,6 +138,19 @@ export default function Navbar() {
                         className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
                         <span className="text-base">📋</span> 내 수강 목록
                       </button>
+                      <button onClick={() => { setDropdownOpen(false); navigate('/cart') }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
+                        <span className="text-base">🛒</span> 장바구니
+                        {cartCount > 0 && (
+                          <span className="ml-auto text-xs px-1.5 py-0.5 bg-brand-500 text-white rounded-full">{cartCount}</span>
+                        )}
+                      </button>
+                      {user.role === 'student' && (
+                        <button onClick={() => { setDropdownOpen(false); navigate('/growth') }}
+                          className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
+                          <span className="text-base">📊</span> 성장 분석
+                        </button>
+                      )}
                       <button onClick={() => { setDropdownOpen(false); navigate('/community') }}
                         className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-[#13161e] hover:text-brand-500 transition-colors text-left">
                         <span className="text-base">💬</span> 커뮤니티
@@ -146,12 +184,8 @@ export default function Navbar() {
               </div>
             ) : (
               <div className="items-center hidden gap-2 md:flex">
-                <Link to="/login" className="px-3 py-1.5 text-sm text-gray-600 dark:text-[#8892a4] hover:text-brand-500 transition-colors">
-                  로그인
-                </Link>
-                <Link to="/register" className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors">
-                  회원가입
-                </Link>
+                <Link to="/login" className="px-3 py-1.5 text-sm text-gray-600 dark:text-[#8892a4] hover:text-brand-500 transition-colors">로그인</Link>
+                <Link to="/register" className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition-colors">회원가입</Link>
               </div>
             )}
 
@@ -170,15 +204,25 @@ export default function Navbar() {
           <div className="md:hidden border-t border-gray-100 dark:border-[#1e2235] bg-white dark:bg-[#13161e] px-4 py-2">
             {navLinks.map(({ path, label }) => (
               <Link key={path} to={path} onClick={() => setMenuOpen(false)}
-                className={`block px-3 py-2.5 rounded-lg text-sm transition-colors
-                  ${isActive(path) ? 'text-brand-500' : 'text-gray-600 dark:text-[#8892a4] hover:text-gray-900 dark:hover:text-white'}`}>
+                className={`block px-3 py-2.5 rounded-lg text-sm ${isActive(path) ? 'text-brand-500' : 'text-gray-600 dark:text-[#8892a4]'}`}>
                 {label}
               </Link>
             ))}
+            {user && (
+              <Link to="/cart" onClick={() => setMenuOpen(false)} className="block px-3 py-2.5 text-sm text-gray-600 dark:text-[#8892a4]">
+                🛒 장바구니{cartCount > 0 && ` (${cartCount})`}
+              </Link>
+            )}
+            {user?.role === 'student' && (
+              <Link to="/growth" onClick={() => setMenuOpen(false)}
+                className={`block px-3 py-2.5 text-sm ${isActive('/growth') ? 'text-brand-500' : 'text-gray-600 dark:text-[#8892a4]'}`}>
+                📊 성장 분석
+              </Link>
+            )}
             {user ? (
               <>
                 <button onClick={() => { setMenuOpen(false); navigate('/profile') }}
-                  className="block w-full text-left px-3 py-2.5 text-sm text-gray-600 dark:text-[#8892a4] hover:text-brand-500">
+                  className="block w-full text-left px-3 py-2.5 text-sm text-gray-600 dark:text-[#8892a4]">
                   ⚙️ 프로필 설정
                 </button>
                 <button onClick={() => { handleLogout(); setMenuOpen(false) }}
@@ -188,7 +232,7 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link to="/login" onClick={() => setMenuOpen(false)} className="block px-3 py-2.5 text-sm text-gray-600 dark:text-[#8892a4]">로그인</Link>
+                <Link to="/login" onClick={() => setMenuOpen(false)} className="block px-3 py-2.5 text-sm text-gray-600">로그인</Link>
                 <Link to="/register" onClick={() => setMenuOpen(false)} className="block px-3 py-2.5 text-sm text-brand-500 font-medium">회원가입</Link>
               </>
             )}

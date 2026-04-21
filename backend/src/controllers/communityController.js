@@ -54,12 +54,15 @@ export const getPostById = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// POST /api/posts
+// POST /api/posts — P2: user_id를 JWT(req.user.id)에서 추출
 export const createPost = async (req, res, next) => {
   try {
-    const { user_id, category, title, content } = req.body
-    if (!user_id || !title || !content)
+    const { category, title, content } = req.body
+    const user_id = req.user.id  // JWT에서 추출
+
+    if (!title || !content)
       return res.status(400).json({ success: false, message: '필수 항목이 누락됐습니다.' })
+
     const [result] = await pool.query(
       'INSERT INTO posts (user_id, category, title, content) VALUES (?, ?, ?, ?)',
       [user_id, category || 'question', title, content]
@@ -68,9 +71,15 @@ export const createPost = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// PUT /api/posts/:id
+// PUT /api/posts/:id — 본인 게시글만 수정 가능
 export const updatePost = async (req, res, next) => {
   try {
+    const [posts] = await pool.query('SELECT user_id FROM posts WHERE id = ?', [req.params.id])
+    if (!posts.length)
+      return res.status(404).json({ success: false, message: '게시글을 찾을 수 없습니다.' })
+    if (posts[0].user_id !== req.user.id)
+      return res.status(403).json({ success: false, message: '본인 게시글만 수정할 수 있습니다.' })
+
     const { title, content, category } = req.body
     await pool.query(
       'UPDATE posts SET title = ?, content = ?, category = ? WHERE id = ?',
@@ -80,20 +89,29 @@ export const updatePost = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// DELETE /api/posts/:id
+// DELETE /api/posts/:id — 본인 게시글만 삭제 가능
 export const deletePost = async (req, res, next) => {
   try {
+    const [posts] = await pool.query('SELECT user_id FROM posts WHERE id = ?', [req.params.id])
+    if (!posts.length)
+      return res.status(404).json({ success: false, message: '게시글을 찾을 수 없습니다.' })
+    if (posts[0].user_id !== req.user.id)
+      return res.status(403).json({ success: false, message: '본인 게시글만 삭제할 수 있습니다.' })
+
     await pool.query('DELETE FROM posts WHERE id = ?', [req.params.id])
     res.json({ success: true })
   } catch (err) { next(err) }
 }
 
-// POST /api/posts/:id/comments
+// POST /api/posts/:id/comments — P2: user_id를 JWT(req.user.id)에서 추출
 export const createPostComment = async (req, res, next) => {
   try {
-    const { user_id, content } = req.body
-    if (!user_id || !content)
-      return res.status(400).json({ success: false, message: '필수 항목이 누락됐습니다.' })
+    const { content } = req.body
+    const user_id = req.user.id  // JWT에서 추출
+
+    if (!content)
+      return res.status(400).json({ success: false, message: '내용을 입력해주세요.' })
+
     const [result] = await pool.query(
       'INSERT INTO post_comments (post_id, user_id, content) VALUES (?, ?, ?)',
       [req.params.id, user_id, content]
@@ -102,9 +120,15 @@ export const createPostComment = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// DELETE /api/post-comments/:id
+// DELETE /api/post-comments/:id — 본인 댓글만 삭제 가능
 export const deletePostComment = async (req, res, next) => {
   try {
+    const [comments] = await pool.query('SELECT user_id FROM post_comments WHERE id = ?', [req.params.id])
+    if (!comments.length)
+      return res.status(404).json({ success: false, message: '댓글을 찾을 수 없습니다.' })
+    if (comments[0].user_id !== req.user.id)
+      return res.status(403).json({ success: false, message: '본인 댓글만 삭제할 수 있습니다.' })
+
     await pool.query('DELETE FROM post_comments WHERE id = ?', [req.params.id])
     res.json({ success: true })
   } catch (err) { next(err) }

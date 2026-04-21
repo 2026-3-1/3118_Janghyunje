@@ -11,27 +11,23 @@ const APPLICATION_STATUS = {
   rejected: { label: '거절됨',   cls: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 cursor-default' },
 }
 
-// 별점 클릭 컴포넌트
 function StarPicker({ value, onChange }) {
   const [hovered, setHovered] = useState(0)
   return (
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map(n => (
-        <button
-          key={n}
-          type="button"
+        <button key={n} type="button"
           onClick={() => onChange(n)}
           onMouseEnter={() => setHovered(n)}
           onMouseLeave={() => setHovered(0)}
-          className="text-2xl leading-none transition-transform hover:scale-110"
-        >
-          <span className={(hovered || value) >= n ? 'text-yellow-400' : 'text-gray-200 dark:text-gray-700'}>
-            ★
-          </span>
+          className="text-2xl leading-none transition-transform hover:scale-110">
+          <span className={(hovered || value) >= n ? 'text-yellow-400' : 'text-gray-200 dark:text-gray-700'}>★</span>
         </button>
       ))}
       <span className="ml-2 text-sm text-gray-400 dark:text-[#6b7280] self-center">
-        {(hovered || value) > 0 ? ['', '별로예요', '그저 그래요', '괜찮아요', '좋아요', '최고예요'][hovered || value] : '별점을 선택하세요'}
+        {(hovered || value) > 0
+          ? ['', '별로예요', '그저 그래요', '괜찮아요', '좋아요', '최고예요'][hovered || value]
+          : '별점을 선택하세요'}
       </span>
     </div>
   )
@@ -41,16 +37,21 @@ export default function LectureDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const [lecture, setLecture] = useState(null)
-  const [reviews, setReviews] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [applying, setApplying] = useState(false)
-  const [applicationStatus, setApplicationStatus] = useState(null)
-  const [toast, setToast] = useState({ msg: '', type: '' })
 
-  // 리뷰 작성 상태
-  const [reviewRating, setReviewRating] = useState(0)
-  const [reviewComment, setReviewComment] = useState('')
+  const [lecture, setLecture]               = useState(null)
+  const [reviews, setReviews]               = useState([])
+  const [loading, setLoading]               = useState(true)
+  const [applying, setApplying]             = useState(false)
+  const [applicationStatus, setApplicationStatus] = useState(null)
+  const [toast, setToast]                   = useState({ msg: '', type: '' })
+
+  // 장바구니 상태
+  const [inCart, setInCart]       = useState(false)
+  const [addingCart, setAddingCart] = useState(false)
+
+  // 리뷰
+  const [reviewRating, setReviewRating]       = useState(0)
+  const [reviewComment, setReviewComment]     = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
   const [alreadyReviewed, setAlreadyReviewed] = useState(false)
 
@@ -62,7 +63,6 @@ export default function LectureDetailPage() {
   const loadReviews = async () => {
     const r = await getReviewsByLectureId(id)
     setReviews(r)
-    // 내가 이미 작성했는지 확인
     if (user) {
       const mine = r.find(rv => rv.student_id === user.id)
       if (mine) setAlreadyReviewed(true)
@@ -86,16 +86,26 @@ export default function LectureDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // 수강 신청 상태 + 장바구니 여부 조회
   useEffect(() => {
     if (!user) return
-    api.get('/applications/student', { params: { student_id: user.id } })
+    // 수강 신청 상태
+    api.get('/applications/student')
       .then(res => {
         const found = (res.data.data || []).find(a => a.lecture_id === Number(id))
         if (found) setApplicationStatus(found.status)
       })
       .catch(() => {})
+    // 장바구니 여부
+    api.get('/cart')
+      .then(res => {
+        const inC = (res.data.data || []).some(i => (i.lecture_id ?? i.id) === Number(id))
+        setInCart(inC)
+      })
+      .catch(() => {})
   }, [id, user])
 
+  // 수강 신청
   const handleApply = async () => {
     if (!user) { showToast('로그인 후 수강 신청이 가능합니다.'); return }
     if (applicationStatus || applying) return
@@ -103,20 +113,46 @@ export default function LectureDetailPage() {
     try {
       await applyLecture(id)
       setApplicationStatus('pending')
-      showToast('수강 신청이 완료되었습니다. 코치 승인을 기다려주세요.', 'success')
+      // 장바구니에 있으면 제거
+      if (inCart) {
+        await api.delete(`/cart/${id}`)
+        setInCart(false)
+      }
+      showToast('수강 신청이 완료됐습니다. 코치 승인을 기다려주세요.', 'success')
     } catch (err) {
-      const msg = err.response?.data?.message || '신청 중 오류가 발생했습니다.'
       if (err.response?.status === 409) {
         setApplicationStatus('pending')
         showToast('이미 수강 신청된 강의입니다.')
       } else {
-        showToast(msg)
+        showToast(err.response?.data?.message || '신청 중 오류가 발생했습니다.')
       }
     } finally {
       setApplying(false)
     }
   }
 
+  // 장바구니 담기 / 빼기
+  const handleCartToggle = async () => {
+    if (!user) { showToast('로그인 후 이용할 수 있습니다.'); return }
+    setAddingCart(true)
+    try {
+      if (inCart) {
+        await api.delete(`/cart/${id}`)
+        setInCart(false)
+        showToast('장바구니에서 제거됐습니다.', 'success')
+      } else {
+        await api.post('/cart', { lecture_id: Number(id) })
+        setInCart(true)
+        showToast('장바구니에 담겼습니다! 장바구니에서 한번에 신청하세요.', 'success')
+      }
+    } catch (err) {
+      showToast(err.response?.data?.message || '오류가 발생했습니다.')
+    } finally {
+      setAddingCart(false)
+    }
+  }
+
+  // 리뷰 제출
   const handleReviewSubmit = async () => {
     if (!reviewRating) { showToast('별점을 선택해주세요.'); return }
     if (!reviewComment.trim()) { showToast('후기 내용을 입력해주세요.'); return }
@@ -124,11 +160,10 @@ export default function LectureDetailPage() {
     try {
       await api.post('/reviews', {
         lecture_id: Number(id),
-        student_id: user.id,
         rating: reviewRating,
         comment: reviewComment.trim(),
       })
-      showToast('후기가 등록되었습니다!', 'success')
+      showToast('후기가 등록됐습니다!', 'success')
       setAlreadyReviewed(true)
       setReviewRating(0)
       setReviewComment('')
@@ -156,10 +191,10 @@ export default function LectureDetailPage() {
     success: 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-700 text-green-600 dark:text-green-400',
   }
 
-  const isMyLecture = user?.id === lecture.coach_id
-  // 리뷰 작성 가능 조건: 학생 + approved 상태 + 아직 작성 안 함
+  const isMyLecture    = user?.id === lecture.coach_id
   const canWriteReview = user && !isMyLecture && applicationStatus === 'approved' && !alreadyReviewed
 
+  // 신청 버튼 렌더링
   const renderApplyButton = () => {
     if (isMyLecture) return null
     if (applicationStatus) {
@@ -176,22 +211,44 @@ export default function LectureDetailPage() {
           ${applying
             ? 'bg-brand-400 text-white cursor-wait'
             : !user
-            ? 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-500 dark:text-[#6b7280] border border-gray-200 dark:border-[#2a2d3e] hover:bg-red-50 hover:text-red-500 hover:border-red-300'
-            : 'bg-brand-500 hover:bg-brand-600 text-white'
-          }`}>
+            ? 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-500 dark:text-[#6b7280] border border-gray-200 dark:border-[#2a2d3e]'
+            : 'bg-brand-500 hover:bg-brand-600 text-white'}`}>
         {applying ? '신청 중...' : !user ? '🔒 로그인 후 신청' : '수강 신청'}
+      </button>
+    )
+  }
+
+  // 장바구니 버튼 렌더링
+  const renderCartButton = () => {
+    if (isMyLecture || applicationStatus) return null
+    return (
+      <button onClick={handleCartToggle} disabled={addingCart}
+        className={`px-5 py-2.5 rounded-xl font-bold text-sm border transition-colors
+          ${addingCart
+            ? 'opacity-50 cursor-wait'
+            : inCart
+            ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-100'
+            : 'bg-white dark:bg-[#1a1d2e] border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-500'
+          }`}>
+        {addingCart ? '...' : inCart ? '🛒 담김 ✓' : '🛒 장바구니'}
       </button>
     )
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
+
       {/* 토스트 */}
       {toast.msg && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5
                          px-4 py-3 rounded-xl border shadow-lg text-sm font-medium whitespace-nowrap ${toastCls[toast.type] || toastCls.error}`}>
           <span>{toast.type === 'success' ? '✓' : '⚠️'}</span>
           {toast.msg}
+          {toast.type === 'success' && inCart && !applicationStatus && (
+            <button onClick={() => navigate('/cart')} className="ml-2 underline text-xs font-semibold">
+              장바구니 보기 →
+            </button>
+          )}
           {toast.type !== 'success' && !user && (
             <button onClick={() => navigate('/login')} className="ml-2 underline text-xs font-semibold">
               로그인하기
@@ -252,61 +309,92 @@ export default function LectureDetailPage() {
         </div>
       </div>
 
-      {/* 수강 신청 */}
-      <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div className="text-xs text-gray-400 dark:text-[#6b7280] mb-1">수강료</div>
-            <div className="flex items-baseline gap-2">
-              <div className="w-5 h-5 bg-brand-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">G</div>
-              <span className="text-2xl font-extrabold text-gray-900 dark:text-white">{lecture.price.toLocaleString()}</span>
-              {lecture.originalPrice && (
-                <>
-                  <span className="text-sm text-gray-300 dark:text-[#4a5568] line-through">{lecture.originalPrice.toLocaleString()}</span>
-                  <span className="text-sm font-bold text-orange-500">{discountRate}%</span>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            {(applicationStatus === 'approved' || isMyLecture) && (
-              <button
-                onClick={() => navigate(`/lectures/${id}/contents`)}
-                className="px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white font-bold text-sm rounded-xl transition-colors">
-                ▶ 강의 수강하기
-              </button>
-            )}
-            {renderApplyButton()}
-            {!user && (
-              <p className="text-xs text-gray-400 dark:text-[#6b7280]">
-                <button onClick={() => navigate('/login')} className="text-brand-500 hover:underline">로그인</button>
-                {' '}후 수강 신청이 가능합니다.
-              </p>
+      {/* 수강 신청 + 장바구니 */}
+      <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-4">
+        {/* 가격 */}
+        <div>
+          <div className="text-xs text-gray-400 dark:text-[#6b7280] mb-1">수강료</div>
+          <div className="flex items-baseline gap-2">
+            <div className="w-5 h-5 bg-brand-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white">G</div>
+            <span className="text-2xl font-extrabold text-gray-900 dark:text-white">{lecture.price.toLocaleString()}</span>
+            {lecture.originalPrice && (
+              <>
+                <span className="text-sm text-gray-300 dark:text-[#4a5568] line-through">{lecture.originalPrice.toLocaleString()}</span>
+                <span className="text-sm font-bold text-orange-500">{discountRate}%</span>
+              </>
             )}
           </div>
         </div>
+
+        {/* 버튼 영역 */}
+        <div className="flex flex-col gap-2">
+          {/* 수강하기 버튼 (승인된 경우) */}
+          {(applicationStatus === 'approved' || isMyLecture) && (
+            <button onClick={() => navigate(`/lectures/${id}/contents`)}
+              className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold text-sm rounded-xl transition-colors">
+              ▶ 강의 수강하기
+            </button>
+          )}
+
+          {/* 수강 신청 + 장바구니 버튼 나란히 */}
+          {!applicationStatus && !isMyLecture && (
+            <div className="flex gap-2">
+              {/* 장바구니 */}
+              {renderCartButton()}
+              {/* 수강 신청 (flex-1로 나머지 공간 차지) */}
+              <div className="flex-1">
+                <button onClick={handleApply} disabled={applying}
+                  className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors
+                    ${applying
+                      ? 'bg-brand-400 text-white cursor-wait'
+                      : !user
+                      ? 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-500 dark:text-[#6b7280] border border-gray-200 dark:border-[#2a2d3e]'
+                      : 'bg-brand-500 hover:bg-brand-600 text-white'}`}>
+                  {applying ? '신청 중...' : !user ? '🔒 로그인 후 신청' : '바로 수강 신청'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 이미 신청한 경우 상태 버튼 */}
+          {applicationStatus && !isMyLecture && (
+            <button disabled className={`w-full py-2.5 rounded-xl font-bold text-sm border ${APPLICATION_STATUS[applicationStatus]?.cls}`}>
+              {APPLICATION_STATUS[applicationStatus]?.label}
+            </button>
+          )}
+
+          {/* 비로그인 안내 */}
+          {!user && (
+            <p className="text-xs text-gray-400 dark:text-[#6b7280] text-center">
+              <button onClick={() => navigate('/login')} className="text-brand-500 hover:underline">로그인</button>
+              {' '}후 수강 신청 또는 장바구니 이용이 가능합니다.
+            </p>
+          )}
+
+          {/* 장바구니에 담긴 경우 바로가기 */}
+          {inCart && !applicationStatus && (
+            <button onClick={() => navigate('/cart')}
+              className="w-full py-2 text-xs text-brand-500 hover:text-brand-600 font-medium transition-colors">
+              장바구니 바로가기 →
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* ── 리뷰 작성 폼 ── */}
+      {/* 리뷰 작성 폼 */}
       {canWriteReview && (
         <div className="bg-white dark:bg-[#13161e] border border-brand-200 dark:border-brand-500/30 rounded-xl p-5 space-y-4">
           <h2 className="text-sm font-bold text-gray-800 dark:text-white">후기 작성</h2>
-
-          {/* 별점 */}
           <div>
             <p className="text-xs text-gray-400 dark:text-[#6b7280] mb-2">별점</p>
             <StarPicker value={reviewRating} onChange={setReviewRating} />
           </div>
-
-          {/* 텍스트 */}
           <div>
             <p className="text-xs text-gray-400 dark:text-[#6b7280] mb-2">후기 내용</p>
             <textarea
-              value={reviewComment}
-              onChange={e => setReviewComment(e.target.value)}
+              value={reviewComment} onChange={e => setReviewComment(e.target.value)}
               placeholder="수강 후기를 자유롭게 작성해주세요."
-              rows={4}
-              maxLength={500}
+              rows={4} maxLength={500}
               className="w-full rounded-xl border border-gray-200 dark:border-[#2a2d3e] bg-gray-50 dark:bg-[#0d0f14]
                          text-gray-800 dark:text-slate-200 text-sm px-4 py-3 resize-none outline-none
                          focus:border-brand-400 dark:focus:border-brand-500 transition-colors
@@ -314,21 +402,15 @@ export default function LectureDetailPage() {
             />
             <p className="text-right text-xs text-gray-300 dark:text-[#4a5568] mt-1">{reviewComment.length} / 500</p>
           </div>
-
-          <button
-            onClick={handleReviewSubmit}
-            disabled={submittingReview}
+          <button onClick={handleReviewSubmit} disabled={submittingReview}
             className={`w-full py-2.5 rounded-xl font-bold text-sm transition-colors
-              ${submittingReview
-                ? 'bg-brand-300 text-white cursor-wait'
-                : 'bg-brand-500 hover:bg-brand-600 text-white'
-              }`}>
+              ${submittingReview ? 'bg-brand-300 text-white cursor-wait' : 'bg-brand-500 hover:bg-brand-600 text-white'}`}>
             {submittingReview ? '등록 중...' : '후기 등록하기'}
           </button>
         </div>
       )}
 
-      {/* 이미 작성한 경우 안내 */}
+      {/* 이미 작성한 경우 */}
       {user && !isMyLecture && applicationStatus === 'approved' && alreadyReviewed && (
         <div className="bg-gray-50 dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4 text-center text-sm text-gray-400 dark:text-[#6b7280]">
           ✓ 이미 후기를 작성하셨습니다.

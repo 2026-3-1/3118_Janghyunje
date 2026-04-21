@@ -1,6 +1,6 @@
 import pool from '../db/index.js'
 import bcrypt from 'bcrypt'
-// import jwt from 'jsonwebtoken'  // P2에서 주석 해제
+import jwt from 'jsonwebtoken'
 
 // POST /api/signup
 export const signup = async (req, res, next) => {
@@ -30,9 +30,7 @@ export const signup = async (req, res, next) => {
   }
 }
 
-// POST /api/login
-// P1: 유저 정보만 반환
-// P2: jwt.sign()으로 토큰 발급으로 교체
+// POST /api/login — P2: JWT 토큰 발급
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body
@@ -48,13 +46,16 @@ export const login = async (req, res, next) => {
     if (!match)
       return res.status(401).json({ success: false, message: '이메일 또는 비밀번호가 올바르지 않습니다.' })
 
-    // P1: 유저 정보 반환 (비밀번호 제외)
     const { password: _, ...safeUser } = user
-    res.json({ success: true, data: safeUser })
 
-    // P2에서 아래로 교체:
-    // const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN })
-    // res.json({ success: true, data: { token, user: safeUser } })
+    // P2: JWT 토큰 발급
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    )
+
+    res.json({ success: true, data: { token, user: safeUser } })
   } catch (err) {
     next(err)
   }
@@ -75,9 +76,13 @@ export const getUserById = async (req, res, next) => {
   }
 }
 
-// PUT /api/users/:id
+// PUT /api/users/:id — 본인만 수정 가능 (authenticate 미들웨어로 보호)
 export const updateUser = async (req, res, next) => {
   try {
+    // 본인 확인
+    if (req.user.id !== Number(req.params.id))
+      return res.status(403).json({ success: false, message: '본인 정보만 수정할 수 있습니다.' })
+
     const { nickname, game, tier, password } = req.body
 
     if (password) {

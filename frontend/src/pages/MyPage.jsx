@@ -14,7 +14,8 @@ export default function MyPage() {
 
   useEffect(() => {
     if (!user) { setLoading(false); return }
-    api.get('/applications/student', { params: { student_id: user.id } })
+    // P2: student_id 쿼리 파라미터 제거 — JWT에서 서버가 직접 추출
+    api.get('/applications/student')
       .then(res => setApplications(res.data.data || []))
       .catch(() => {})
       .finally(() => setLoading(false))

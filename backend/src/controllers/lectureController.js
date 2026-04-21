@@ -1,9 +1,9 @@
 import pool from '../db/index.js'
 
-// GET /api/lectures
+// GET /api/lectures — 공개 강의 목록 (전체)
 export const getLectures = async (req, res, next) => {
   try {
-    const { game, tier, maxPrice, keyword, coachType, position, sort, coach_id } = req.query
+    const { game, tier, maxPrice, keyword, coachType, position, sort } = req.query
 
     let sql = `
       SELECT
@@ -17,24 +17,15 @@ export const getLectures = async (req, res, next) => {
       JOIN users u ON l.coach_id = u.id
       LEFT JOIN reviews r ON r.lecture_id = l.id
       LEFT JOIN applications a ON a.lecture_id = l.id AND a.status = 'approved'
-      WHERE 1=1
+      WHERE l.status = 'active'
     `
     const params = []
 
-    // 버그 수정: coach_id로 본인 강의 목록 조회 (status 무관하게 전체 조회)
-    if (coach_id) {
-      sql += ' AND l.coach_id = ?'
-      params.push(Number(coach_id))
-    } else {
-      // 일반 목록은 active 강의만
-      sql += " AND l.status = 'active'"
-    }
-
-    if (game && game !== 'all') { sql += ' AND l.game = ?';         params.push(game) }
-    if (tier && tier !== 'all') { sql += ' AND l.target_tier = ?';  params.push(tier) }
-    if (maxPrice)               { sql += ' AND l.price <= ?';       params.push(Number(maxPrice)) }
+    if (game && game !== 'all') { sql += ' AND l.game = ?';        params.push(game) }
+    if (tier && tier !== 'all') { sql += ' AND l.target_tier = ?'; params.push(tier) }
+    if (maxPrice)               { sql += ' AND l.price <= ?';      params.push(Number(maxPrice)) }
     if (coachType && coachType !== 'all') { sql += ' AND l.coach_type = ?'; params.push(coachType) }
-    if (position && position !== 'all')   { sql += ' AND l.position = ?';   params.push(position) }
+    if (position  && position  !== 'all') { sql += ' AND l.position = ?';   params.push(position) }
     if (keyword) {
       sql += ' AND (l.title LIKE ? OR u.nickname LIKE ?)'
       params.push(`%${keyword}%`, `%${keyword}%`)
@@ -53,9 +44,28 @@ export const getLectures = async (req, res, next) => {
 
     const [rows] = await pool.query(sql, params)
     res.json({ success: true, data: rows })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
+}
+
+// GET /api/lectures/my — 코치 본인 강의 목록 (JWT에서 coach_id 추출)
+export const getMyLectures = async (req, res, next) => {
+  try {
+    const coach_id = req.user.id
+    const [rows] = await pool.query(`
+      SELECT
+        l.*,
+        COALESCE(AVG(r.rating), 0) AS rating,
+        COUNT(DISTINCT r.id)        AS review_count,
+        COUNT(DISTINCT a.id)        AS enroll_count
+      FROM lectures l
+      LEFT JOIN reviews r ON r.lecture_id = l.id
+      LEFT JOIN applications a ON a.lecture_id = l.id AND a.status = 'approved'
+      WHERE l.coach_id = ?
+      GROUP BY l.id
+      ORDER BY l.created_at DESC
+    `, [coach_id])
+    res.json({ success: true, data: rows })
+  } catch (err) { next(err) }
 }
 
 // GET /api/lectures/:id
@@ -79,50 +89,55 @@ export const getLectureById = async (req, res, next) => {
 
     if (!rows.length) return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
     res.json({ success: true, data: rows[0] })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 }
 
-// POST /api/lectures  (P1: coach_id는 body로 받음 — P2에서 req.user.id로 교체)
+// POST /api/lectures
 export const createLecture = async (req, res, next) => {
   try {
-    const { coach_id, title, description, game, price, original_price, target_tier, position, coach_type } = req.body
-    if (!coach_id || !title || !game || price == null)
+    const { title, description, game, price, original_price, target_tier, position, coach_type } = req.body
+    const coach_id = req.user.id
+
+    if (!title || !game || price == null)
       return res.status(400).json({ success: false, message: '필수 항목이 누락됐습니다.' })
 
     const [result] = await pool.query(
-      `INSERT INTO lectures (coach_id, title, description, game, price, original_price, target_tier, position, coach_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO lectures (coach_id, title, description, game, price, original_price, target_tier, position, coach_type, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
       [coach_id, title, description, game, price, original_price || null, target_tier, position, coach_type]
     )
     res.status(201).json({ success: true, data: { id: result.insertId } })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 }
 
 // PUT /api/lectures/:id
 export const updateLecture = async (req, res, next) => {
   try {
+    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [req.params.id])
+    if (!lectures.length)
+      return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
+    if (lectures[0].coach_id !== req.user.id)
+      return res.status(403).json({ success: false, message: '본인 강의만 수정할 수 있습니다.' })
+
     const { title, description, price, original_price, target_tier, position, status } = req.body
     await pool.query(
-      `UPDATE lectures SET title=?, description=?, price=?, original_price=?, target_tier=?, position=?, status=?
-       WHERE id=?`,
-      [title, description, price, original_price || null, target_tier, position, status, req.params.id]
+      `UPDATE lectures SET title=?, description=?, price=?, original_price=?, target_tier=?, position=?, status=? WHERE id=?`,
+      [title, description, price, original_price || null, target_tier, position, status || 'active', req.params.id]
     )
     res.json({ success: true })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 }
 
 // DELETE /api/lectures/:id
 export const deleteLecture = async (req, res, next) => {
   try {
+    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [req.params.id])
+    if (!lectures.length)
+      return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
+    if (lectures[0].coach_id !== req.user.id)
+      return res.status(403).json({ success: false, message: '본인 강의만 삭제할 수 있습니다.' })
+
     await pool.query('DELETE FROM lectures WHERE id = ?', [req.params.id])
     res.json({ success: true })
-  } catch (err) {
-    next(err)
-  }
+  } catch (err) { next(err) }
 }

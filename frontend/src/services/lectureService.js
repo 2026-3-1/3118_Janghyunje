@@ -7,13 +7,11 @@ const delay = (ms = 300) => new Promise(res => setTimeout(res, ms))
 // 백엔드 응답 → 프론트 컴포넌트 형식으로 변환
 const normalize = (row) => ({
   ...row,
-  // 백엔드는 flat 구조 (coach_nickname) → 프론트는 중첩 (coach.nickname)
   coach: {
     nickname: row.coach_nickname,
     tier:     row.coach_tier,
     tierName: row.coach_tier,
   },
-  // snake_case → camelCase
   originalPrice: row.original_price,
   targetTier:    row.target_tier,
   targetTierName: row.target_tier,
@@ -21,10 +19,8 @@ const normalize = (row) => ({
   enrollCount:   Number(row.enroll_count  ?? 0),
   rating:        Number(row.rating        ?? 0),
   coachType:     row.coach_type,
-  // 썸네일은 game 기준으로 매핑
   thumbBg:   THUMB_BG[row.game]   || 'from-[#1a1d2e] to-[#2a2d3e]',
   thumbIcon: THUMB_ICON[row.game] || '🎮',
-  // 배지: original_price 있으면 sale 배지 추가
   badges: ['online', ...(row.original_price ? ['sale'] : [])],
 })
 
@@ -83,7 +79,6 @@ export async function getReviewsByLectureId(lectureId) {
     return mockReviews.filter(r => r.lectureId === Number(lectureId))
   }
   const { data } = await api.get(`/reviews/${lectureId}`)
-  // 리뷰도 컴포넌트 형식에 맞게 변환
   return data.data.map(r => ({
     ...r,
     student: {
@@ -94,15 +89,24 @@ export async function getReviewsByLectureId(lectureId) {
   }))
 }
 
+// P2: student_id 제거 — JWT에서 서버가 직접 추출
 export async function applyLecture(lectureId) {
   if (USE_MOCK) {
     await delay(500)
     return { success: true, message: '수강 신청이 완료되었습니다.' }
   }
-  const user = JSON.parse(localStorage.getItem('user') || 'null')
-  if (!user) throw new Error('로그인이 필요합니다.')
-  const { data } = await api.post('/applications', { lecture_id: Number(lectureId), student_id: user.id })
+  const { data } = await api.post('/applications', { lecture_id: Number(lectureId) })
   return data
+}
+
+// P2: student_id 쿼리 파라미터 제거 — JWT에서 서버가 직접 추출
+export async function getMyApplications() {
+  if (USE_MOCK) {
+    await delay()
+    return []
+  }
+  const { data } = await api.get('/applications/student')
+  return data.data
 }
 
 // 회원가입
@@ -111,7 +115,7 @@ export async function signup({ email, password, nickname, role, game, tier }) {
   return data
 }
 
-// 로그인
+// 로그인 — P2: 응답에 token 포함됨
 export async function login({ email, password }) {
   const { data } = await api.post('/login', { email, password })
   return data

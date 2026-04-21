@@ -13,7 +13,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [rememberEmail, setRememberEmail] = useState(!!savedEmail)
 
-  // 에러 메시지는 여기서 절대 지우지 않음 — 사용자가 ✕ 누르거나 로그인 성공 시에만 사라짐
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
@@ -23,14 +22,14 @@ export default function LoginPage() {
       setError('이메일과 비밀번호를 입력해주세요.')
       return
     }
-    // 에러 초기화를 여기서도 하지 않음 — 로그인 결과에 따라서만 변경
     setLoading(true)
     try {
       const res = await login(form)
       if (rememberEmail) localStorage.setItem('savedEmail', form.email)
       else localStorage.removeItem('savedEmail')
       setError('')
-      setUser(res.data)
+      // P2: token과 user를 함께 저장
+      setUser(res.data.user, res.data.token)
       navigate('/')
     } catch (err) {
       setForm(prev => ({ ...prev, password: '' }))
