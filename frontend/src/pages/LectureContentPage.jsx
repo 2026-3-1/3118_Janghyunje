@@ -4,26 +4,59 @@ import api from '../services/api'
 import useAuthStore from '../store/useAuthStore'
 import { LoadingScreen, EmptyState } from '../components/ui'
 
+// YouTube IFrame API 로드 (전역 1회)
+function loadYouTubeAPI() {
+  if (window.YT && window.YT.Player) return Promise.resolve()
+  return new Promise((resolve) => {
+    if (document.getElementById('yt-iframe-api')) {
+      // 이미 스크립트 태그는 있지만 아직 로딩 중
+      const prev = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => { prev?.(); resolve() }
+      return
+    }
+    window.onYouTubeIframeAPIReady = resolve
+    const tag = document.createElement('script')
+    tag.id  = 'yt-iframe-api'
+    tag.src = 'https://www.youtube.com/iframe_api'
+    document.body.appendChild(tag)
+  })
+}
+
+// YouTube embed URL → video ID 추출
+function extractVideoId(url) {
+  if (!url) return null
+  const embedMatch = url.match(/youtube\.com\/embed\/([^?&]+)/)
+  if (embedMatch) return embedMatch[1]
+  const watchMatch = url.match(/[?&]v=([^?&]+)/)
+  if (watchMatch) return watchMatch[1]
+  const shortMatch = url.match(/youtu\.be\/([^?&]+)/)
+  if (shortMatch) return shortMatch[1]
+  return null
+}
+
 export default function LectureContentPage() {
   const { lectureId } = useParams()
   const navigate      = useNavigate()
   const { user }      = useAuthStore()
 
-  const [lecture, setLecture]     = useState(null)
-  const [contents, setContents]   = useState([])
-  const [selected, setSelected]   = useState(null)
-  const [comments, setComments]   = useState([])
+  const [lecture, setLecture]       = useState(null)
+  const [contents, setContents]     = useState([])
+  const [selected, setSelected]     = useState(null)
+  const [comments, setComments]     = useState([])
   const [newComment, setNewComment] = useState('')
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading]       = useState(true)
   const [commenting, setCommenting] = useState(false)
 
   // 진도율
-  const [progressMap, setProgressMap]   = useState({})  // { contentId: { watched_sec, completed } }
-  const [lectureProgress, setLectureProgress] = useState(null)  // { percent, can_review }
-  const saveTimer = useRef(null)
+  const [progressMap, setProgressMap]         = useState({})
+  const [lectureProgress, setLectureProgress] = useState(null)
 
-  // 유튜브 iframe에서 postMessage로 진도 받기
-  const iframeRef = useRef(null)
+  // YouTube Player
+  const playerRef      = useRef(null)  // YT.Player 인스턴스
+  const playerDivRef   = useRef(null)  // DOM div
+  const saveTimerRef   = useRef(null)
+  const selectedRef    = useRef(null)  // selected의 최신값 (클로저 문제 방지)
+  selectedRef.current  = selected
 
   const loadProgress = useCallback(async () => {
     try {
@@ -36,6 +69,74 @@ export default function LectureContentPage() {
     } catch {}
   }, [lectureId])
 
+  // 진도 저장
+  const saveProgress = useCallback(async (contentId, watchedSec, durationSec) => {
+    if (!contentId || !durationSec) return
+    try {
+      await api.post('/progress', {
+        content_id:   contentId,
+        lecture_id:   Number(lectureId),
+        watched_sec:  Math.floor(watchedSec),
+        duration_sec: Math.floor(durationSec),
+      })
+      await loadProgress()
+    } catch {}
+  }, [lectureId, loadProgress])
+
+  // YouTube Player 생성
+  const createPlayer = useCallback(async (videoId, startSeconds = 0) => {
+    await loadYouTubeAPI()
+
+    // 기존 플레이어 제거
+    if (playerRef.current) {
+      try { playerRef.current.destroy() } catch {}
+      playerRef.current = null
+    }
+
+    if (!playerDivRef.current || !videoId) return
+
+    playerRef.current = new window.YT.Player(playerDivRef.current, {
+      videoId,
+      playerVars: {
+        autoplay:       0,
+        start:          Math.floor(startSeconds),
+        rel:            0,
+        modestbranding: 1,
+      },
+      events: {
+        onStateChange: (event) => {
+          // 재생 중(1): 5초마다 진도 저장
+          if (event.data === window.YT.PlayerState.PLAYING) {
+            clearInterval(saveTimerRef.current)
+            saveTimerRef.current = setInterval(() => {
+              const player  = playerRef.current
+              const content = selectedRef.current
+              if (!player || !content) return
+              try {
+                const cur = player.getCurrentTime()
+                const dur = player.getDuration()
+                if (dur > 0) saveProgress(content.id, cur, dur)
+              } catch {}
+            }, 5000)
+          } else {
+            // 일시정지·종료 시 즉시 저장
+            clearInterval(saveTimerRef.current)
+            const player  = playerRef.current
+            const content = selectedRef.current
+            if (player && content) {
+              try {
+                const cur = player.getCurrentTime()
+                const dur = player.getDuration()
+                if (dur > 0) saveProgress(content.id, cur, dur)
+              } catch {}
+            }
+          }
+        },
+      },
+    })
+  }, [saveProgress])
+
+  // 초기 데이터 로드
   useEffect(() => {
     Promise.all([
       api.get(`/lectures/${lectureId}`),
@@ -47,50 +148,54 @@ export default function LectureContentPage() {
 
       await loadProgress()
 
-      // 이어보기: 마지막으로 보던 콘텐츠 복원 (미완료 중 첫 번째)
-      const saved = localStorage.getItem(`last_content_${lectureId}`)
-      const savedContent = saved ? list.find(c => c.id === Number(saved)) : null
+      // 이어보기: 마지막 시청 콘텐츠
+      const savedId  = localStorage.getItem(`last_content_${lectureId}`)
+      const savedContent = savedId ? list.find(c => c.id === Number(savedId)) : null
       setSelected(savedContent || list[0] || null)
     }).catch(() => navigate('/lectures'))
       .finally(() => setLoading(false))
   }, [lectureId])
 
+  // 콘텐츠 변경 시 플레이어 생성
   useEffect(() => {
     if (!selected) return
+
+    // 마지막 시청 위치 저장
+    localStorage.setItem(`last_content_${lectureId}`, selected.id)
+
+    // 댓글 로드
     api.get(`/contents/${selected.id}/comments`)
       .then(res => setComments(res.data.data || []))
       .catch(() => {})
-    // 마지막 시청 콘텐츠 저장
-    localStorage.setItem(`last_content_${lectureId}`, selected.id)
-  }, [selected])
 
-  // YouTube 진도 저장 (postMessage 기반)
-  useEffect(() => {
-    const handler = (e) => {
-      if (!e.data || typeof e.data !== 'string') return
-      try {
-        const msg = JSON.parse(e.data)
-        if (msg.event === 'infoDelivery' && msg.info && selected) {
-          const { currentTime, duration } = msg.info
-          if (!currentTime || !duration) return
-
-          clearTimeout(saveTimer.current)
-          saveTimer.current = setTimeout(() => {
-            api.post('/progress', {
-              content_id:   selected.id,
-              lecture_id:   Number(lectureId),
-              watched_sec:  Math.floor(currentTime),
-              duration_sec: Math.floor(duration),
-            }).then(res => {
-              if (res.data.data?.completed) loadProgress()
-            }).catch(() => {})
-          }, 5000)  // 5초마다 저장
-        }
-      } catch {}
+    // 비디오 타입이면 플레이어 생성
+    if (selected.type === 'video') {
+      const videoId = extractVideoId(selected.url)
+      if (videoId) {
+        // 이어볼 시간 계산
+        const prog = progressMap[selected.id]
+        const startAt = (prog && prog.duration_sec > 0 && !prog.completed)
+          ? Math.max(0, prog.watched_sec - 2)  // 2초 앞에서 시작
+          : 0
+        // DOM이 렌더된 후 생성
+        setTimeout(() => createPlayer(videoId, startAt), 100)
+      }
     }
-    window.addEventListener('message', handler)
-    return () => { window.removeEventListener('message', handler); clearTimeout(saveTimer.current) }
-  }, [selected, lectureId])
+
+    return () => {
+      clearInterval(saveTimerRef.current)
+    }
+  }, [selected?.id])
+
+  // 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      clearInterval(saveTimerRef.current)
+      if (playerRef.current) {
+        try { playerRef.current.destroy() } catch {}
+      }
+    }
+  }, [])
 
   const handleSelectContent = (c) => {
     setSelected(c)
@@ -115,13 +220,6 @@ export default function LectureContentPage() {
       await api.delete(`/comments/${commentId}`)
       setComments(prev => prev.filter(c => c.id !== commentId))
     } catch {}
-  }
-
-  // YouTube embed URL에 JS API 활성화 파라미터 추가
-  const getEmbedUrl = (url) => {
-    if (!url) return url
-    const sep = url.includes('?') ? '&' : '?'
-    return `${url}${sep}enablejsapi=1&origin=${window.location.origin}`
   }
 
   if (loading) return <LoadingScreen />
@@ -151,7 +249,7 @@ export default function LectureContentPage() {
                   style={{ width: `${lectureProgress.percent}%` }} />
               </div>
               {lectureProgress.can_review && (
-                <p className="text-[10px] text-green-500">✓ 리뷰 작성 가능</p>
+                <p className="text-[10px] text-green-500">✓ 리뷰 작성 가능 (60% 이상)</p>
               )}
             </div>
           )}
@@ -159,8 +257,12 @@ export default function LectureContentPage() {
 
         <div className="flex-1 overflow-y-auto">
           {contents.map((c, idx) => {
-            const prog = progressMap[c.id]
+            const prog   = progressMap[c.id]
             const isDone = prog?.completed === 1
+            const watchedPct = (prog && prog.duration_sec > 0)
+              ? Math.min((prog.watched_sec / prog.duration_sec) * 100, 100)
+              : 0
+
             return (
               <button key={c.id} onClick={() => handleSelectContent(c)}
                 className={`w-full text-left px-4 py-3.5 border-b border-gray-50 dark:border-[#1e2235] transition-colors
@@ -168,7 +270,6 @@ export default function LectureContentPage() {
                     ? 'bg-brand-50 dark:bg-[#1e2a4a] border-l-2 border-l-brand-500'
                     : 'hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'}`}>
                 <div className="flex items-start gap-2.5">
-                  {/* 완료 여부 */}
                   <span className={`text-xs font-bold mt-0.5 shrink-0 w-5 text-center
                     ${isDone ? 'text-green-500' : selected?.id === c.id ? 'text-brand-500' : 'text-gray-400 dark:text-[#6b7280]'}`}>
                     {isDone ? '✓' : String(idx + 1).padStart(2, '0')}
@@ -185,14 +286,20 @@ export default function LectureContentPage() {
                           : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
                         {c.type === 'video' ? '▶ 영상' : '📄 자료'}
                       </span>
-                      {/* 진도바 */}
-                      {prog && prog.duration_sec > 0 && !isDone && (
+                      {/* 진도 바 */}
+                      {!isDone && watchedPct > 0 && (
                         <div className="flex-1 h-1 bg-gray-100 dark:bg-[#2a2d3e] rounded-full overflow-hidden">
                           <div className="h-full bg-brand-400 rounded-full"
-                            style={{ width: `${Math.min((prog.watched_sec / prog.duration_sec) * 100, 100)}%` }} />
+                            style={{ width: `${watchedPct}%` }} />
                         </div>
                       )}
                     </div>
+                    {/* 이어보기 표시 */}
+                    {!isDone && prog?.watched_sec > 5 && (
+                      <p className="text-[10px] text-brand-400 mt-0.5">
+                        ▶ {Math.floor(prog.watched_sec / 60)}:{String(Math.floor(prog.watched_sec % 60)).padStart(2,'0')} 이어보기
+                      </p>
+                    )}
                   </div>
                 </div>
               </button>
@@ -213,14 +320,8 @@ export default function LectureContentPage() {
             {/* 영상 플레이어 */}
             {selected.type === 'video' && (
               <div className="rounded-xl overflow-hidden bg-black aspect-video">
-                <iframe
-                  ref={iframeRef}
-                  src={getEmbedUrl(selected.url)}
-                  title={selected.title}
-                  className="w-full h-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+                {/* YT.Player가 이 div를 교체함 */}
+                <div ref={playerDivRef} className="w-full h-full" />
               </div>
             )}
 
@@ -263,14 +364,12 @@ export default function LectureContentPage() {
                     {user.nickname?.[0]?.toUpperCase()}
                   </div>
                   <div className="flex-1 space-y-2">
-                    <textarea
-                      value={newComment} onChange={e => setNewComment(e.target.value)}
+                    <textarea value={newComment} onChange={e => setNewComment(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleComment() }}
-                      placeholder="질문이나 후기를 남겨보세요. (Ctrl+Enter로 등록)" rows={3}
+                      placeholder="질문이나 후기를 남겨보세요. (Ctrl+Enter)" rows={3}
                       className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
                                  text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                                 outline-none focus:border-brand-400 resize-none transition-colors"
-                    />
+                                 outline-none focus:border-brand-400 resize-none transition-colors" />
                     <div className="flex justify-end">
                       <button onClick={handleComment} disabled={commenting || !newComment.trim()}
                         className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 disabled:bg-brand-300 text-white text-sm font-semibold rounded-lg transition-colors">
