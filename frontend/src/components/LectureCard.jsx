@@ -93,7 +93,7 @@ export default function LectureCard({ lecture, initialStatus = null }) {
       <div className={`relative aspect-video bg-gradient-to-br ${thumbBg} flex items-center justify-center text-3xl overflow-hidden`}>
         <span className="select-none">{thumbIcon}</span>
         {badges?.length > 0 && (
-          <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+          <div className="absolute flex flex-wrap gap-1 top-2 left-2">
             {badges.map(b => <CardBadge key={b} type={b} />)}
           </div>
         )}

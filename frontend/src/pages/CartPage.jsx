@@ -14,11 +14,10 @@ const GAME_COLOR = {
 
 export default function CartPage() {
   const navigate = useNavigate()
-  const [items, setItems]     = useState([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems]       = useState([])
+  const [loading, setLoading]   = useState(true)
   const [selected, setSelected] = useState(new Set())
-  const [applying, setApplying] = useState(false)
-  const [toast, setToast] = useState({ msg: '', type: '' })
+  const [toast, setToast]       = useState({ msg: '', type: '' })
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -62,27 +61,42 @@ export default function CartPage() {
     }
   }
 
-  const handleApplySelected = async () => {
+  // 결제 페이지로 이동 — 선택 강의들을 순서대로 처리
+  const handleCheckout = () => {
     const targets = items.filter(i => selected.has(i.lecture_id ?? i.id))
-    if (!targets.length) { showToast('신청할 강의를 선택해주세요.', 'error'); return }
-    setApplying(true)
-    let successCount = 0
-    for (const item of targets) {
-      try {
-        await api.post('/applications', { lecture_id: item.lecture_id ?? item.id })
-        await api.delete(`/cart/${item.lecture_id ?? item.id}`)
-        successCount++
-      } catch {}
+    if (!targets.length) { showToast('결제할 강의를 선택해주세요.', 'error'); return }
+
+    // 첫 번째 강의 결제 페이지로 이동, 나머지는 queue로 전달
+    const [first, ...rest] = targets
+    const lectureForCheckout = {
+      id:            first.lecture_id ?? first.id,
+      title:         first.title,
+      game:          first.game,
+      price:         first.price,
+      originalPrice: first.original_price,
+      coach:         { nickname: first.coach_nickname },
     }
-    showToast(`${successCount}개 강의 수강 신청이 완료됐습니다!`)
-    loadCart()
-    setApplying(false)
+
+    navigate('/checkout', {
+      state: {
+        lecture: lectureForCheckout,
+        queue:   rest.map(item => ({
+          id:            item.lecture_id ?? item.id,
+          title:         item.title,
+          game:          item.game,
+          price:         item.price,
+          originalPrice: item.original_price,
+          coach:         { nickname: item.coach_nickname },
+        })),
+        fromCart: true,
+      }
+    })
   }
 
-  const selectedItems  = items.filter(i => selected.has(i.lecture_id ?? i.id))
-  const totalPrice     = selectedItems.reduce((s, i) => s + Number(i.price), 0)
-  const totalOriginal  = selectedItems.reduce((s, i) => s + Number(i.original_price || i.price), 0)
-  const totalDiscount  = totalOriginal - totalPrice
+  const selectedItems = items.filter(i => selected.has(i.lecture_id ?? i.id))
+  const totalPrice    = selectedItems.reduce((s, i) => s + Number(i.price), 0)
+  const totalOriginal = selectedItems.reduce((s, i) => s + Number(i.original_price || i.price), 0)
+  const totalDiscount = totalOriginal - totalPrice
 
   if (loading) return <LoadingScreen />
 
@@ -112,7 +126,6 @@ export default function CartPage() {
 
           {/* 강의 목록 */}
           <div className="flex-1 space-y-3">
-            {/* 전체 선택 */}
             <label className="flex items-center gap-2 px-1 cursor-pointer select-none">
               <input type="checkbox" checked={selected.size === items.length}
                 onChange={toggleAll}
@@ -121,18 +134,16 @@ export default function CartPage() {
             </label>
 
             {items.map(item => {
-              const lid = item.lecture_id ?? item.id
+              const lid        = item.lecture_id ?? item.id
               const isSelected = selected.has(lid)
-              const discount = item.original_price
+              const discount   = item.original_price
                 ? Math.round((1 - item.price / item.original_price) * 100)
                 : null
 
               return (
                 <div key={lid}
                   className={`bg-white dark:bg-[#13161e] border rounded-xl p-4 transition-all
-                    ${isSelected
-                      ? 'border-brand-400 dark:border-brand-500/60'
-                      : 'border-gray-100 dark:border-[#1e2235]'}`}>
+                    ${isSelected ? 'border-brand-400 dark:border-brand-500/60' : 'border-gray-100 dark:border-[#1e2235]'}`}>
                   <div className="flex items-start gap-3">
                     <input type="checkbox" checked={isSelected}
                       onChange={() => toggleSelect(lid)}
@@ -173,7 +184,7 @@ export default function CartPage() {
           {/* 결제 요약 */}
           <div className="lg:w-72 shrink-0">
             <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-4 sticky top-20">
-              <h2 className="text-sm font-bold text-gray-800 dark:text-white">수강 신청 요약</h2>
+              <h2 className="text-sm font-bold text-gray-800 dark:text-white">결제 요약</h2>
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between text-gray-500 dark:text-[#8892a4]">
@@ -188,19 +199,20 @@ export default function CartPage() {
                 )}
                 <div className="border-t border-gray-100 dark:border-[#2a2d3e] pt-2 flex justify-between font-bold text-gray-900 dark:text-white">
                   <span>합계</span>
-                  <span>{totalPrice.toLocaleString()}원</span>
+                  <span className="text-brand-500">{totalPrice.toLocaleString()}원</span>
                 </div>
               </div>
 
+              {/* 결제하기 버튼 */}
               <button
-                onClick={handleApplySelected}
-                disabled={applying || selected.size === 0}
+                onClick={handleCheckout}
+                disabled={selected.size === 0}
                 className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl transition-colors">
-                {applying ? '신청 중...' : `선택 강의 수강 신청 (${selectedItems.length}개)`}
+                💳 결제하기 ({selectedItems.length}개)
               </button>
 
               <p className="text-xs text-gray-400 dark:text-[#6b7280] text-center">
-                수강 신청 후 코치 승인이 필요합니다.
+                강의별 결제 후 코치 승인이 필요합니다.
               </p>
             </div>
           </div>
