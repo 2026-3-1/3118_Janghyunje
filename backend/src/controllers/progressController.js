@@ -9,7 +9,8 @@ export const saveProgress = async (req, res, next) => {
     if (!content_id || !lecture_id)
       return res.status(400).json({ success: false, message: '필수 항목 누락' })
 
-    const completed = duration_sec > 0 && (watched_sec / duration_sec) >= 0.8 ? 1 : 0
+    // 100% 시청 시 완료 처리 (watched_sec >= duration_sec)
+    const completed = duration_sec > 0 && watched_sec >= duration_sec ? 1 : 0
 
     await pool.query(`
       INSERT INTO content_progress (user_id, content_id, lecture_id, watched_sec, duration_sec, completed)
@@ -31,19 +32,16 @@ export const getLectureProgress = async (req, res, next) => {
     const user_id    = req.user.id
     const lecture_id = req.params.lectureId
 
-    // 전체 콘텐츠 수
     const [[{ total }]] = await pool.query(
       'SELECT COUNT(*) AS total FROM lecture_contents WHERE lecture_id = ?',
       [lecture_id]
     )
 
-    // 완료된 콘텐츠 수
     const [[{ done }]] = await pool.query(
       'SELECT COUNT(*) AS done FROM content_progress WHERE user_id = ? AND lecture_id = ? AND completed = 1',
       [user_id, lecture_id]
     )
 
-    // 콘텐츠별 진도
     const [items] = await pool.query(`
       SELECT lc.id AS content_id, lc.title,
              COALESCE(cp.watched_sec, 0)  AS watched_sec,
