@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { signup, login, getUserById, updateUser } from '../controllers/authController.js'
 import { getLectures, getMyLectures, getLectureById, createLecture, updateLecture, deleteLecture } from '../controllers/lectureController.js'
-import { applyLecture, getStudentApplications, getCoachApplications, approveApplication, rejectApplication, getLectureStudents } from '../controllers/applicationController.js'
+import { applyLecture, getStudentApplications, getCoachApplications, getLectureStudents } from '../controllers/applicationController.js'
 import { getReviews, createReview } from '../controllers/reviewController.js'
 import { getPosts, getPostById, createPost, updatePost, deletePost, createPostComment, deletePostComment } from '../controllers/communityController.js'
 import { getContents, getContentById, createContent, updateContent, deleteContent, getComments, createComment, deleteComment } from '../controllers/contentController.js'
@@ -12,7 +12,7 @@ import { authenticate, authorize } from '../middleware/errorHandler.js'
 
 const router = Router()
 
-// ── 인증 (공개) ──────────────────────────────────────────────────────
+// ── 인증 ─────────────────────────────────────────────────────────────
 router.post('/signup', signup)
 router.post('/login',  login)
 
@@ -21,7 +21,7 @@ router.get('/users/:id',  authenticate, getUserById)
 router.put('/users/:id',  authenticate, updateUser)
 
 // ── 강의 ─────────────────────────────────────────────────────────────
-router.get('/lectures/my',     authenticate, authorize('coach'), getMyLectures)  // 반드시 /:id 보다 위에 있어야 함
+router.get('/lectures/my',     authenticate, authorize('coach'), getMyLectures)
 router.get('/lectures',        getLectures)
 router.get('/lectures/:id',    getLectureById)
 router.post('/lectures',       authenticate, authorize('coach'), createLecture)
@@ -29,12 +29,11 @@ router.put('/lectures/:id',    authenticate, authorize('coach'), updateLecture)
 router.delete('/lectures/:id', authenticate, authorize('coach'), deleteLecture)
 
 // ── 수강 신청 ─────────────────────────────────────────────────────────
-router.post('/applications',                    authenticate, authorize('student'), applyLecture)
-router.get('/applications/student',             authenticate, authorize('student'), getStudentApplications)
-router.get('/applications/coach',               authenticate, authorize('coach'),   getCoachApplications)
-router.get('/applications/lecture/:lectureId',  authenticate, authorize('coach'),   getLectureStudents)
-router.put('/applications/:id/approve',         authenticate, authorize('coach'),   approveApplication)
-router.put('/applications/:id/reject',          authenticate, authorize('coach'),   rejectApplication)
+router.post('/applications',                   authenticate, authorize('student'), applyLecture)
+router.get('/applications/student',            authenticate, authorize('student'), getStudentApplications)
+router.get('/applications/coach',              authenticate, authorize('coach'),   getCoachApplications)
+router.get('/applications/lecture/:lectureId', authenticate, authorize('coach'),   getLectureStudents)
+// 승인/거절 제거 — 결제 완료 시 자동 승인
 
 // ── 리뷰 ─────────────────────────────────────────────────────────────
 router.get('/reviews/:lectureId', getReviews)

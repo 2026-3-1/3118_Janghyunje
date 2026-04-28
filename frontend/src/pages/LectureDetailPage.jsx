@@ -5,10 +5,9 @@ import { TierBadge, GameBadge, StarRating, CardBadge, LoadingScreen } from '../c
 import useAuthStore from '../store/useAuthStore'
 import api from '../services/api'
 
+// 결제 완료 시 자동 승인 — pending/rejected 제거
 const APPLICATION_STATUS = {
-  pending:  { label: '검토 중', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 cursor-default' },
   approved: { label: '수강 중', cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 cursor-default' },
-  rejected: { label: '거절됨',  cls: 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 cursor-default' },
 }
 
 function StarPicker({ value, onChange }) {
@@ -47,10 +46,10 @@ export default function LectureDetailPage() {
   const [inCart, setInCart]         = useState(false)
   const [addingCart, setAddingCart] = useState(false)
 
-  const [reviewRating, setReviewRating]           = useState(0)
-  const [reviewComment, setReviewComment]         = useState('')
-  const [submittingReview, setSubmittingReview]   = useState(false)
-  const [alreadyReviewed, setAlreadyReviewed]     = useState(false)
+  const [reviewRating, setReviewRating]         = useState(0)
+  const [reviewComment, setReviewComment]       = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [alreadyReviewed, setAlreadyReviewed]   = useState(false)
 
   const showToast = (msg, type = 'error') => {
     setToast({ msg, type })
@@ -60,9 +59,7 @@ export default function LectureDetailPage() {
   const loadReviews = async () => {
     const r = await getReviewsByLectureId(id)
     setReviews(r)
-    if (user) {
-      if (r.find(rv => rv.student_id === user.id)) setAlreadyReviewed(true)
-    }
+    if (user && r.find(rv => rv.student_id === user.id)) setAlreadyReviewed(true)
   }
 
   useEffect(() => {
@@ -140,7 +137,6 @@ export default function LectureDetailPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
 
-      {/* 토스트 */}
       {toast.msg && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5
                          px-4 py-3 rounded-xl border shadow-lg text-sm font-medium whitespace-nowrap ${toastCls[toast.type] || toastCls.error}`}>
@@ -197,7 +193,6 @@ export default function LectureDetailPage() {
 
       {/* 수강 신청 / 결제 카드 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-4">
-        {/* 가격 */}
         <div>
           <p className="text-xs text-gray-400 dark:text-[#6b7280] mb-1">수강료</p>
           <div className="flex items-baseline gap-2">
@@ -213,8 +208,7 @@ export default function LectureDetailPage() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-
-          {/* 수강 중 → 강의 수강하기 버튼 */}
+          {/* 수강 중 */}
           {(applicationStatus === 'approved' || isMyLecture) && (
             <button onClick={() => navigate(`/lectures/${id}/contents`)}
               className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold text-base rounded-xl transition-colors">
@@ -222,10 +216,9 @@ export default function LectureDetailPage() {
             </button>
           )}
 
-          {/* 미신청 → 결제 + 장바구니 */}
+          {/* 미신청 */}
           {!applicationStatus && !isMyLecture && (
             <>
-              {/* 결제하기 메인 버튼 */}
               <button
                 onClick={() => {
                   if (!user) { showToast('로그인 후 수강 신청이 가능합니다.'); return }
@@ -236,7 +229,6 @@ export default function LectureDetailPage() {
                 {!user ? '🔒 로그인 후 신청' : '💳 바로 결제하기'}
               </button>
 
-              {/* 장바구니 담기 버튼 */}
               {user && (
                 <button onClick={handleCartToggle} disabled={addingCart}
                   className={`w-full py-3 rounded-xl font-bold text-sm border-2 transition-colors
@@ -244,13 +236,11 @@ export default function LectureDetailPage() {
                       ? 'opacity-50 cursor-wait border-gray-200 dark:border-[#2a2d3e] text-gray-400'
                       : inCart
                       ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100'
-                      : 'border-gray-200 dark:border-[#2a2d3e] bg-white dark:bg-[#1a1d2e] text-gray-700 dark:text-slate-300 hover:border-brand-400 hover:text-brand-500'
-                    }`}>
+                      : 'border-gray-200 dark:border-[#2a2d3e] bg-white dark:bg-[#1a1d2e] text-gray-700 dark:text-slate-300 hover:border-brand-400 hover:text-brand-500'}`}>
                   {addingCart ? '...' : inCart ? '🛒 장바구니에 담김 ✓' : '🛒 장바구니에 담기'}
                 </button>
               )}
 
-              {/* 비로그인 안내 */}
               {!user && (
                 <p className="text-xs text-gray-400 dark:text-[#6b7280] text-center">
                   <button onClick={() => navigate('/login')} className="text-brand-500 hover:underline">로그인</button>
@@ -258,7 +248,6 @@ export default function LectureDetailPage() {
                 </p>
               )}
 
-              {/* 장바구니 담긴 경우 바로가기 */}
               {inCart && (
                 <button onClick={() => navigate('/cart')}
                   className="w-full py-1.5 text-xs text-brand-500 hover:text-brand-600 font-medium transition-colors">
@@ -266,13 +255,6 @@ export default function LectureDetailPage() {
                 </button>
               )}
             </>
-          )}
-
-          {/* 신청 완료 상태 표시 */}
-          {applicationStatus && !isMyLecture && applicationStatus !== 'approved' && (
-            <button disabled className={`w-full py-3 rounded-xl font-bold text-sm border ${APPLICATION_STATUS[applicationStatus]?.cls}`}>
-              {APPLICATION_STATUS[applicationStatus]?.label}
-            </button>
           )}
         </div>
       </div>
@@ -300,11 +282,6 @@ export default function LectureDetailPage() {
       {user && !isMyLecture && applicationStatus === 'approved' && alreadyReviewed && (
         <div className="bg-gray-50 dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4 text-center text-sm text-gray-400">
           ✓ 이미 후기를 작성하셨습니다.
-        </div>
-      )}
-      {user && !isMyLecture && applicationStatus === 'pending' && (
-        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 rounded-xl p-4 text-center text-sm text-amber-600 dark:text-amber-400">
-          코치 승인 후 후기를 작성할 수 있습니다.
         </div>
       )}
 

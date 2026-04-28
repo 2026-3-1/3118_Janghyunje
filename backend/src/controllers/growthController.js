@@ -5,11 +5,7 @@ export const getMyReports = async (req, res, next) => {
   try {
     const student_id = req.user.id
     const [rows] = await pool.query(`
-      SELECT
-        gr.*,
-        l.title   AS lecture_title,
-        l.game,
-        u.nickname AS coach_nickname
+      SELECT gr.*, l.title AS lecture_title, l.game, u.nickname AS coach_nickname
       FROM growth_reports gr
       JOIN lectures l ON gr.lecture_id = l.id
       JOIN users u    ON gr.coach_id   = u.id
@@ -20,13 +16,12 @@ export const getMyReports = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// GET /api/growth/reports/:id — 성장 분석 단건 조회 (코치 또는 해당 수강자만)
+// GET /api/growth/reports/:id — 단건 조회 (코치 또는 해당 수강자만)
 export const getReportById = async (req, res, next) => {
   try {
     const [rows] = await pool.query(`
       SELECT gr.*, l.title AS lecture_title, l.game,
-             u.nickname AS coach_nickname,
-             s.nickname AS student_nickname
+             u.nickname AS coach_nickname, s.nickname AS student_nickname
       FROM growth_reports gr
       JOIN lectures l ON gr.lecture_id = l.id
       JOIN users u    ON gr.coach_id   = u.id
@@ -38,7 +33,6 @@ export const getReportById = async (req, res, next) => {
       return res.status(404).json({ success: false, message: '분석 내용을 찾을 수 없습니다.' })
 
     const report = rows[0]
-    // 코치 본인 또는 해당 수강자만 열람 가능
     if (req.user.id !== report.coach_id && req.user.id !== report.student_id)
       return res.status(403).json({ success: false, message: '열람 권한이 없습니다.' })
 
@@ -46,7 +40,7 @@ export const getReportById = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// GET /api/growth/coach/reports — 코치: 내가 작성한 성장 분석 목록
+// GET /api/growth/coach/reports — 코치: 내가 작성한 목록
 export const getCoachReports = async (req, res, next) => {
   try {
     const coach_id = req.user.id
@@ -69,7 +63,7 @@ export const getCoachReports = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// POST /api/growth/reports — 코치: 성장 분석 작성
+// POST /api/growth/reports — 코치: 성장 분석 작성 (같은 학생에게 재작성 시 UPDATE)
 export const createReport = async (req, res, next) => {
   try {
     const { lecture_id, student_id, title, content } = req.body
@@ -85,7 +79,7 @@ export const createReport = async (req, res, next) => {
     if (lectures[0].coach_id !== coach_id)
       return res.status(403).json({ success: false, message: '본인 강의의 수강자에게만 작성할 수 있습니다.' })
 
-    // 해당 수강자가 승인된 상태인지 확인
+    // 수강 승인 여부 확인
     const [apps] = await pool.query(
       "SELECT id FROM applications WHERE lecture_id = ? AND student_id = ? AND status = 'approved'",
       [lecture_id, student_id]
@@ -93,15 +87,29 @@ export const createReport = async (req, res, next) => {
     if (!apps.length)
       return res.status(403).json({ success: false, message: '수강이 승인된 학생에게만 작성할 수 있습니다.' })
 
-    const [result] = await pool.query(
-      'INSERT INTO growth_reports (lecture_id, student_id, coach_id, title, content) VALUES (?, ?, ?, ?, ?)',
-      [lecture_id, student_id, coach_id, title, content]
+    // 이미 존재하면 UPDATE, 없으면 INSERT (중복 방지)
+    const [existing] = await pool.query(
+      'SELECT id FROM growth_reports WHERE lecture_id = ? AND student_id = ?',
+      [lecture_id, student_id]
     )
-    res.status(201).json({ success: true, data: { id: result.insertId } })
+
+    if (existing.length) {
+      await pool.query(
+        'UPDATE growth_reports SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [title, content, existing[0].id]
+      )
+      res.json({ success: true, data: { id: existing[0].id } })
+    } else {
+      const [result] = await pool.query(
+        'INSERT INTO growth_reports (lecture_id, student_id, coach_id, title, content) VALUES (?, ?, ?, ?, ?)',
+        [lecture_id, student_id, coach_id, title, content]
+      )
+      res.status(201).json({ success: true, data: { id: result.insertId } })
+    }
   } catch (err) { next(err) }
 }
 
-// PUT /api/growth/reports/:id — 코치: 성장 분석 수정
+// PUT /api/growth/reports/:id — 코치: 수정
 export const updateReport = async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT coach_id FROM growth_reports WHERE id = ?', [req.params.id])
@@ -119,7 +127,7 @@ export const updateReport = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// DELETE /api/growth/reports/:id — 코치: 성장 분석 삭제
+// DELETE /api/growth/reports/:id — 코치: 삭제
 export const deleteReport = async (req, res, next) => {
   try {
     const [rows] = await pool.query('SELECT coach_id FROM growth_reports WHERE id = ?', [req.params.id])

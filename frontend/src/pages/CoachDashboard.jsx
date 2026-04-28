@@ -4,11 +4,6 @@ import api from '../services/api'
 import useAuthStore from '../store/useAuthStore'
 import { TierBadge, LoadingScreen, EmptyState } from '../components/ui'
 
-const STATUS = {
-  pending:  { label: '대기 중', cls: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-700' },
-  approved: { label: '승인됨',  cls: 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-700' },
-  rejected: { label: '거절됨',  cls: 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border-red-200 dark:border-red-700' },
-}
 const LECTURE_STATUS = {
   active:   { label: '모집 중', cls: 'bg-green-50 dark:bg-green-900/20 text-green-600 border-green-200' },
   inactive: { label: '비공개',  cls: 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-500 border-gray-200' },
@@ -19,12 +14,7 @@ export default function CoachDashboard() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
-  const [mainTab, setMainTab] = useState('applications')
-
-  // 신청 관리
-  const [applications, setApplications] = useState([])
-  const [appLoading, setAppLoading]     = useState(true)
-  const [activeTab, setActiveTab]       = useState('all')
+  const [mainTab, setMainTab] = useState('students')
 
   // 내 강의 목록
   const [lectures, setLectures]               = useState([])
@@ -37,8 +27,8 @@ export default function CoachDashboard() {
   const [studentsLoading, setStudentsLoading] = useState(false)
 
   // 성장 분석 모달
-  const [growthModal, setGrowthModal]       = useState(null)
-  const [growthForm, setGrowthForm]         = useState({ title: '', content: '' })
+  const [growthModal, setGrowthModal]           = useState(null)
+  const [growthForm, setGrowthForm]             = useState({ title: '', content: '' })
   const [growthSubmitting, setGrowthSubmitting] = useState(false)
 
   const [toast, setToast] = useState({ msg: '', type: '' })
@@ -49,39 +39,20 @@ export default function CoachDashboard() {
 
   useEffect(() => {
     if (!user || user.role !== 'coach') { navigate('/'); return }
-    fetchApplications()
+    fetchMyLectures()
   }, [user])
 
-  // ── 내 강의 fetch (최초 1회) ──────────────────────────────────────
+  useEffect(() => {
+    if (mainTab === 'lectures' || mainTab === 'students') fetchMyLectures()
+  }, [mainTab])
+
   const fetchMyLectures = () => {
-    if (lecturesFetched) return  // 이미 불러왔으면 중복 호출 방지
+    if (lecturesFetched) return
     setLecturesLoading(true)
-    // /lectures/my 로 본인 강의만 조회
     api.get('/lectures/my')
-      .then(res => {
-        setLectures(res.data.data || [])
-        setLecturesFetched(true)
-      })
+      .then(res => { setLectures(res.data.data || []); setLecturesFetched(true) })
       .catch(() => {})
       .finally(() => setLecturesLoading(false))
-  }
-
-  // lectures 탭 진입 시 fetch
-  useEffect(() => {
-    if (mainTab === 'lectures') fetchMyLectures()
-  }, [mainTab])
-
-  // 수강자 탭 진입 시 강의 목록 미리 불러오기
-  useEffect(() => {
-    if (mainTab === 'students') fetchMyLectures()
-  }, [mainTab])
-
-  const fetchApplications = () => {
-    setAppLoading(true)
-    api.get('/applications/coach')
-      .then(res => setApplications(res.data.data || []))
-      .catch(() => {})
-      .finally(() => setAppLoading(false))
   }
 
   const fetchStudents = async (lecture) => {
@@ -94,22 +65,6 @@ export default function CoachDashboard() {
     finally { setStudentsLoading(false) }
   }
 
-  const handleApprove = async (appId) => {
-    try {
-      await api.put(`/applications/${appId}/approve`)
-      setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'approved' } : a))
-      showToast('수강 신청을 승인했습니다.')
-    } catch { showToast('처리 중 오류가 발생했습니다.', 'error') }
-  }
-
-  const handleReject = async (appId) => {
-    try {
-      await api.put(`/applications/${appId}/reject`)
-      setApplications(prev => prev.map(a => a.id === appId ? { ...a, status: 'rejected' } : a))
-      showToast('수강 신청을 거절했습니다.', 'error')
-    } catch { showToast('처리 중 오류가 발생했습니다.', 'error') }
-  }
-
   const handleGrowthSubmit = async () => {
     if (!growthForm.title.trim() || !growthForm.content.trim()) {
       showToast('제목과 내용을 모두 입력해주세요.', 'error'); return
@@ -119,8 +74,8 @@ export default function CoachDashboard() {
       await api.post('/growth/reports', {
         lecture_id: growthModal.lecture_id,
         student_id: growthModal.student_id,
-        title:   growthForm.title,
-        content: growthForm.content,
+        title:      growthForm.title,
+        content:    growthForm.content,
       })
       showToast('성장 분석이 작성됐습니다.')
       setGrowthModal(null)
@@ -131,13 +86,6 @@ export default function CoachDashboard() {
     } finally { setGrowthSubmitting(false) }
   }
 
-  const filtered = activeTab === 'all' ? applications : applications.filter(a => a.status === activeTab)
-  const counts = {
-    all:      applications.length,
-    pending:  applications.filter(a => a.status === 'pending').length,
-    approved: applications.filter(a => a.status === 'approved').length,
-    rejected: applications.filter(a => a.status === 'rejected').length,
-  }
   const toastCls = {
     success: 'bg-green-50 dark:bg-green-900/30 border-green-200 text-green-700',
     error:   'bg-red-50 dark:bg-red-900/30 border-red-200 text-red-600',
@@ -210,9 +158,8 @@ export default function CoachDashboard() {
       {/* 메인 탭 */}
       <div className="flex gap-1 p-1 bg-gray-100 dark:bg-[#1a1d2e] rounded-xl w-fit">
         {[
-          { key: 'applications', label: '수강 신청 관리', badge: counts.pending },
-          { key: 'students',     label: '수강자 목록' },
-          { key: 'lectures',     label: '내 강의 목록' },
+          { key: 'students', label: '수강자 목록' },
+          { key: 'lectures', label: '내 강의 목록' },
         ].map(tab => (
           <button key={tab.key} onClick={() => setMainTab(tab.key)}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors
@@ -220,79 +167,9 @@ export default function CoachDashboard() {
                 ? 'bg-white dark:bg-[#13161e] text-gray-900 dark:text-white shadow-sm'
                 : 'text-gray-500 dark:text-[#6b7280] hover:text-gray-700 dark:hover:text-white'}`}>
             {tab.label}
-            {tab.badge > 0 && (
-              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-brand-500 text-white">{tab.badge}</span>
-            )}
           </button>
         ))}
       </div>
-
-      {/* ── 수강 신청 관리 ── */}
-      {mainTab === 'applications' && (
-        <>
-          <div className="flex gap-2 border-b border-gray-100 dark:border-[#1e2235]">
-            {[
-              { key: 'all',      label: '전체' },
-              { key: 'pending',  label: '대기 중' },
-              { key: 'approved', label: '승인됨' },
-              { key: 'rejected', label: '거절됨' },
-            ].map(tab => (
-              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-                  ${activeTab === tab.key ? 'border-brand-500 text-brand-500' : 'border-transparent text-gray-400 dark:text-[#6b7280] hover:text-gray-700 dark:hover:text-white'}`}>
-                {tab.label}
-                <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full
-                  ${activeTab === tab.key ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-600' : 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-500'}`}>
-                  {counts[tab.key]}
-                </span>
-              </button>
-            ))}
-          </div>
-          {appLoading ? <LoadingScreen /> : filtered.length === 0 ? (
-            <EmptyState title="신청 내역이 없습니다" description="아직 수강 신청이 없어요." />
-          ) : (
-            <div className="space-y-3">
-              {filtered.map(app => (
-                <div key={app.id}
-                  className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-800 dark:text-slate-200 truncate">{app.title}</p>
-                        <button onClick={() => navigate(`/lectures/${app.lecture_id}/manage`)}
-                          className="text-[10px] px-2 py-0.5 bg-brand-50 dark:bg-[#1e2a4a] text-brand-500 border border-brand-200 dark:border-brand-700/50 rounded-md hover:bg-brand-500 hover:text-white transition-colors shrink-0">
-                          자료 관리
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center text-[10px] font-bold text-brand-500">
-                          {app.student_nickname?.[0]}
-                        </div>
-                        <span className="text-xs font-medium text-gray-600 dark:text-slate-300">{app.student_nickname}</span>
-                        <TierBadge tier={app.student_tier} tierName={app.student_tier} />
-                      </div>
-                      <p className="text-xs text-gray-400">신청일: {new Date(app.created_at).toLocaleDateString('ko-KR')}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 shrink-0">
-                      <span className={`text-xs px-2 py-0.5 rounded-md border font-medium ${STATUS[app.status]?.cls}`}>
-                        {STATUS[app.status]?.label}
-                      </span>
-                      {app.status === 'pending' && (
-                        <div className="flex gap-1.5">
-                          <button onClick={() => handleApprove(app.id)}
-                            className="px-3 py-1 text-xs font-semibold text-white bg-green-500 rounded-lg hover:bg-green-600">승인</button>
-                          <button onClick={() => handleReject(app.id)}
-                            className="px-3 py-1 bg-gray-100 dark:bg-[#1a1d2e] text-gray-500 text-xs font-semibold rounded-lg border border-gray-200 hover:bg-red-50 hover:text-red-500 hover:border-red-300 transition-colors">거절</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
 
       {/* ── 수강자 목록 ── */}
       {mainTab === 'students' && (
@@ -318,9 +195,10 @@ export default function CoachDashboard() {
                 <button onClick={() => setSelectedLecture(null)}
                   className="text-sm text-gray-400 hover:text-brand-500 transition-colors">← 강의 목록</button>
                 <h2 className="text-base font-bold text-gray-900 dark:text-white">{selectedLecture.title}</h2>
+                <span className="text-xs text-gray-400 dark:text-[#6b7280]">{students.length}명 수강 중</span>
               </div>
               {studentsLoading ? <LoadingScreen /> : students.length === 0 ? (
-                <EmptyState title="수강자가 없습니다" description="아직 승인된 수강자가 없어요." />
+                <EmptyState title="수강자가 없습니다" description="아직 수강 중인 학생이 없어요." />
               ) : (
                 <div className="space-y-3">
                   {students.map(s => (
@@ -338,6 +216,8 @@ export default function CoachDashboard() {
                             </div>
                             <TierBadge tier={s.student_tier} tierName={s.student_tier} />
                           </div>
+
+                          {/* 진도율 */}
                           <div className="space-y-1">
                             <div className="flex justify-between text-xs text-gray-400">
                               <span>진도율</span>
@@ -349,16 +229,17 @@ export default function CoachDashboard() {
                                 style={{ width: `${s.progress_percent}%` }} />
                             </div>
                           </div>
+
                           <div className="flex items-center gap-3 text-xs">
                             {s.has_review
-                              ? <span className="text-green-500">⭐ 리뷰 작성됨 ({s.review_rating}점)</span>
+                              ? <span className="text-green-500">⭐ 리뷰 ({s.review_rating}점)</span>
                               : <span className="text-gray-300 dark:text-[#4a5568]">리뷰 미작성</span>}
                             {s.has_growth_report
-                              ? <button onClick={() => navigate(`/growth/reports/${s.growth_report_id}`)}
-                                  className="text-brand-500 hover:underline">📊 성장 분석 보기</button>
+                              ? <span className="text-brand-400">📊 성장 분석 작성됨</span>
                               : <span className="text-gray-300 dark:text-[#4a5568]">성장 분석 미작성</span>}
                           </div>
                         </div>
+
                         <button
                           onClick={() => {
                             setGrowthModal({ student_id: s.student_id, student_nickname: s.student_nickname, lecture_id: selectedLecture.id })
@@ -406,7 +287,7 @@ export default function CoachDashboard() {
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
-                      <button onClick={() => fetchStudents(lec)}
+                      <button onClick={() => { fetchStudents(lec); setMainTab('students') }}
                         className="text-xs px-3 py-1.5 bg-brand-50 dark:bg-[#1e2a4a] text-brand-500 rounded-lg hover:bg-brand-500 hover:text-white transition-colors border border-brand-200">
                         수강자 보기
                       </button>
