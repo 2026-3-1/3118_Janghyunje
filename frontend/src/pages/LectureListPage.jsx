@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import useLectureStore from '../store/useLectureStore'
+import useMyApplications from '../store/useMyApplications'
 import LectureCard from '../components/LectureCard'
 import SearchFilter from '../components/SearchFilter'
 import { LoadingScreen, EmptyState, Pagination } from '../components/ui'
@@ -9,13 +10,14 @@ const PAGE_SIZE = 10
 
 export default function LectureListPage() {
   const { lectures, loading, fetchLectures, filter, setFilter, resetFilter } = useLectureStore()
+  const statusMap = useMyApplications()
   const [page, setPage] = useState(1)
 
   useEffect(() => { fetchLectures() }, [])
   useEffect(() => { setPage(1) }, [lectures.length])
 
   const totalPages = Math.ceil(lectures.length / PAGE_SIZE)
-  const paginated = lectures.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const paginated  = lectures.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const handleReset = () => {
     resetFilter()
@@ -26,7 +28,6 @@ export default function LectureListPage() {
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
       <SearchFilter showSort />
 
-      {/* 결과 헤더 */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500 dark:text-[#8892a4]">
           <span className="text-gray-900 dark:text-white font-semibold">{lectures.length}</span>개의 강의
@@ -52,7 +53,11 @@ export default function LectureListPage() {
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {paginated.map(lecture => (
-              <LectureCard key={lecture.id} lecture={lecture} />
+              <LectureCard
+                key={lecture.id}
+                lecture={lecture}
+                initialStatus={statusMap[lecture.id] || null}
+              />
             ))}
           </div>
           <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />

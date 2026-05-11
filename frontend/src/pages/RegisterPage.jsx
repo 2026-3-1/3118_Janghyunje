@@ -11,7 +11,6 @@ export default function RegisterPage() {
     email: '', password: '', passwordConfirm: '',
     nickname: '', role: 'student', game: 'lol', tier: 'gold',
   })
-  // 필드별 에러 상태
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
 
@@ -19,7 +18,6 @@ export default function RegisterPage() {
 
   const handleChange = (e) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
-    // 해당 필드 에러 지우기
     if (errors[e.target.name]) setErrors(prev => ({ ...prev, [e.target.name]: '' }))
   }
 
@@ -41,10 +39,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     const validationErrors = validate()
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors)
-      return
-    }
+    if (Object.keys(validationErrors).length > 0) { setErrors(validationErrors); return }
     setLoading(true)
     try {
       await signup({
@@ -52,23 +47,17 @@ export default function RegisterPage() {
         nickname: form.nickname, role: form.role,
         game: form.game, tier: form.tier,
       })
-      // 회원가입 성공 후 자동 로그인
+      // P2: 자동 로그인 후 token + user 분리 저장
       const res = await login({ email: form.email, password: form.password })
-      setUser(res.data)
+      setUser(res.data.user, res.data.token)
       navigate('/')
     } catch (err) {
-      const code = err.response?.data?.code
+      const code    = err.response?.data?.code
       const message = err.response?.data?.message || '회원가입에 실패했습니다.'
-      if (code === 'EMAIL_DUPLICATE') {
-        setErrors({ email: message })
-      } else if (code === 'NICKNAME_DUPLICATE') {
-        setErrors({ nickname: message })
-      } else {
-        setErrors({ general: message })
-      }
-    } finally {
-      setLoading(false)
-    }
+      if (code === 'EMAIL_DUPLICATE')      setErrors({ email: message })
+      else if (code === 'NICKNAME_DUPLICATE') setErrors({ nickname: message })
+      else setErrors({ general: message })
+    } finally { setLoading(false) }
   }
 
   const inputCls = (field) =>
@@ -76,8 +65,7 @@ export default function RegisterPage() {
      placeholder:text-gray-300 dark:placeholder:text-[#4a5568] outline-none transition-colors
      ${errors[field]
        ? 'border-red-400 dark:border-red-600 focus:border-red-400'
-       : 'border-gray-200 dark:border-[#2a2d3e] focus:border-brand-400'
-     }`
+       : 'border-gray-200 dark:border-[#2a2d3e] focus:border-brand-400'}`
 
   return (
     <div className="min-h-[calc(100vh-52px)] flex items-center justify-center px-4 py-12">
@@ -91,7 +79,6 @@ export default function RegisterPage() {
 
         <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-2xl p-6 space-y-4">
 
-          {/* 일반 에러 */}
           {errors.general && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2.5 text-sm text-red-600 dark:text-red-400">
               {errors.general}
@@ -111,8 +98,7 @@ export default function RegisterPage() {
                   className={`p-3 rounded-xl border text-left transition-all
                     ${form.role === opt.value
                       ? 'border-brand-400 bg-brand-50 dark:bg-[#1e2a4a]'
-                      : 'border-gray-200 dark:border-[#2a2d3e] hover:border-brand-300'
-                    }`}>
+                      : 'border-gray-200 dark:border-[#2a2d3e] hover:border-brand-300'}`}>
                   <div className="text-sm font-semibold text-gray-800 dark:text-white">{opt.label}</div>
                   <div className="text-xs text-gray-400 dark:text-[#6b7280]">{opt.desc}</div>
                 </button>

@@ -1,21 +1,15 @@
 import { useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { TierBadge, StarRating, CardBadge } from './ui'
-import { applyLecture } from '../services/lectureService'
 import useAuthStore from '../store/useAuthStore'
-import api from '../services/api'
 
 const STATUS_BTN = {
-  pending:  { label: '검토 중', cls: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-700 cursor-default' },
   approved: { label: '수강 중', cls: 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-700 cursor-default' },
-  rejected: { label: '거절됨',  cls: 'bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 border-red-200 dark:border-red-700 cursor-default' },
 }
 
 export default function LectureCard({ lecture, initialStatus = null }) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const [applying, setApplying] = useState(false)
-  const [applicationStatus, setApplicationStatus] = useState(initialStatus)
   const [toast, setToast] = useState('')
 
   const { id, title, price, originalPrice, coach, rating, reviewCount, enrollCount, badges, thumbBg, thumbIcon } = lecture
@@ -29,49 +23,30 @@ export default function LectureCard({ lecture, initialStatus = null }) {
     setTimeout(() => setToast(''), 3000)
   }
 
-  const handleApply = async (e) => {
+  const handleApply = (e) => {
     e.stopPropagation()
-    if (!user) {
-      showToast('로그인 후 수강 신청이 가능합니다.')
-      return
-    }
-    if (applicationStatus || applying) return
-    setApplying(true)
-    try {
-      await applyLecture(id)
-      setApplicationStatus('pending')
-    } catch (err) {
-      if (err.response?.status === 409) {
-        setApplicationStatus('pending')
-        showToast('이미 수강 신청된 강의입니다.')
-      } else {
-        showToast(err.response?.data?.message || '신청 중 오류가 발생했습니다.')
-      }
-    } finally {
-      setApplying(false)
-    }
+    if (!user) { showToast('로그인 후 수강 신청이 가능합니다.'); return }
+    navigate('/checkout', { state: { lecture } })
   }
 
+  // state 없이 prop 직접 사용 → initialStatus 변경 시 즉시 반영
   const renderBtn = () => {
-    if (applicationStatus) {
-      const s = STATUS_BTN[applicationStatus]
+    if (initialStatus === 'approved') {
       return (
         <button disabled onClick={e => e.stopPropagation()}
-          className={`text-xs px-2.5 py-1 rounded-lg border ${s.cls}`}>
-          {s.label}
+          className={`text-xs px-2.5 py-1 rounded-lg border ${STATUS_BTN.approved.cls}`}>
+          수강 중
         </button>
       )
     }
     return (
-      <button onClick={handleApply} disabled={applying}
+      <button onClick={handleApply}
         className={`text-xs px-2.5 py-1 rounded-lg border transition-colors
-          ${applying
-            ? 'bg-gray-50 dark:bg-[#1a1d2e] text-gray-400 border-gray-200 dark:border-[#2a2d3e] cursor-wait'
-            : !user
-            ? 'bg-gray-50 dark:bg-[#1a1d2e] text-gray-400 dark:text-[#6b7280] border-gray-200 dark:border-[#2a2d3e] hover:bg-red-50 hover:text-red-500 hover:border-red-300'
+          ${!user
+            ? 'bg-gray-50 dark:bg-[#1a1d2e] text-gray-400 dark:text-[#6b7280] border-gray-200 dark:border-[#2a2d3e]'
             : 'bg-brand-50 dark:bg-[#1e2a4a] text-brand-600 dark:text-brand-400 border-brand-200 dark:border-brand-700/50 hover:bg-brand-500 hover:text-white hover:border-brand-500'
           }`}>
-        {applying ? '...' : !user ? '🔒 신청' : '신청'}
+        {!user ? '🔒 신청' : '신청'}
       </button>
     )
   }
@@ -82,14 +57,12 @@ export default function LectureCard({ lecture, initialStatus = null }) {
                  hover:border-brand-400 dark:hover:border-brand-500/60 hover:-translate-y-0.5 hover:shadow-md
                  transition-all duration-200 relative">
 
-      {/* 토스트 */}
       {toast && (
         <div className="absolute inset-x-0 top-0 z-10 bg-red-500 text-white text-xs font-medium text-center py-1.5 rounded-t-xl">
           {toast}
         </div>
       )}
 
-      {/* 썸네일 */}
       <div className={`relative aspect-video bg-gradient-to-br ${thumbBg} flex items-center justify-center text-3xl overflow-hidden`}>
         <span className="select-none">{thumbIcon}</span>
         {badges?.length > 0 && (
