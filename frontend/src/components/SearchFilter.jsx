@@ -28,7 +28,7 @@ export default function SearchFilter({ showSort = false }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       {/* 검색 + 태그 필터 */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap items-center gap-2">
         {/* 검색박스 */}
         <div className="flex items-center gap-2 bg-white dark:bg-[#1a1d2e] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2 flex-1 min-w-[180px] focus-within:border-brand-400 transition-colors">
           <span className="text-gray-300 dark:text-[#4a5568] text-sm">🔍</span>
@@ -57,7 +57,7 @@ export default function SearchFilter({ showSort = false }) {
       </div>
 
       {/* 셀렉트 필터들 */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap items-center gap-2">
         <select value={filter.tier} onChange={e => setFilter('tier', e.target.value)}
           className="bg-white dark:bg-[#1a1d2e] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-1.5 text-sm text-gray-600 dark:text-[#8892a4] outline-none focus:border-brand-400 transition-colors cursor-pointer">
           {tierOptions.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
