@@ -61,26 +61,22 @@ export default function CartPage() {
     }
   }
 
-  // 결제 페이지로 이동 — 선택 강의들을 순서대로 처리
   const handleCheckout = () => {
     const targets = items.filter(i => selected.has(i.lecture_id ?? i.id))
     if (!targets.length) { showToast('결제할 강의를 선택해주세요.', 'error'); return }
 
-    // 첫 번째 강의 결제 페이지로 이동, 나머지는 queue로 전달
     const [first, ...rest] = targets
-    const lectureForCheckout = {
-      id:            first.lecture_id ?? first.id,
-      title:         first.title,
-      game:          first.game,
-      price:         first.price,
-      originalPrice: first.original_price,
-      coach:         { nickname: first.coach_nickname },
-    }
-
     navigate('/checkout', {
       state: {
-        lecture: lectureForCheckout,
-        queue:   rest.map(item => ({
+        lecture: {
+          id:            first.lecture_id ?? first.id,
+          title:         first.title,
+          game:          first.game,
+          price:         first.price,
+          originalPrice: first.original_price,
+          coach:         { nickname: first.coach_nickname },
+        },
+        queue: rest.map(item => ({
           id:            item.lecture_id ?? item.id,
           title:         item.title,
           game:          item.game,
@@ -203,17 +199,12 @@ export default function CartPage() {
                 </div>
               </div>
 
-              {/* 결제하기 버튼 */}
               <button
                 onClick={handleCheckout}
                 disabled={selected.size === 0}
                 className="w-full py-3 bg-brand-500 hover:bg-brand-600 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl transition-colors">
                 💳 결제하기 ({selectedItems.length}개)
               </button>
-
-              <p className="text-xs text-gray-400 dark:text-[#6b7280] text-center">
-                강의별 결제 후 코치 승인이 필요합니다.
-              </p>
             </div>
           </div>
         </div>

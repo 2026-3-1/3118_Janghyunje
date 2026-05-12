@@ -61,7 +61,7 @@ export const getCoachApplications = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// GET /api/applications/lecture/:lectureId — 특정 강의 수강자 목록 (student_id 기준 중복 제거)
+// GET /api/applications/lecture/:lectureId — 수강자 목록 (시청 시간 기반 진도율)
 export const getLectureStudents = async (req, res, next) => {
   try {
     const coach_id   = req.user.id
@@ -78,9 +78,9 @@ export const getLectureStudents = async (req, res, next) => {
         a.id AS application_id, a.status, a.created_at AS applied_at,
         u.id AS student_id, u.nickname AS student_nickname,
         u.tier AS student_tier, u.game AS student_game, u.email AS student_email,
-        COALESCE(prog.done, 0)  AS completed_count,
-        COALESCE(prog.total, 0) AS total_count,
-        COALESCE(ROUND(prog.done / NULLIF(prog.total, 0) * 100), 0) AS progress_percent,
+        COALESCE(prog.completed_count, 0) AS completed_count,
+        COALESCE(prog.total_count, 0)     AS total_count,
+        COALESCE(prog.progress_percent, 0) AS progress_percent,
         CASE WHEN r.id IS NOT NULL THEN 1 ELSE 0 END AS has_review,
         COALESCE(r.rating, 0)   AS review_rating,
         CASE WHEN gr.id IS NOT NULL THEN 1 ELSE 0 END AS has_growth_report,
@@ -93,14 +93,21 @@ export const getLectureStudents = async (req, res, next) => {
       ) a
       JOIN users u ON a.student_id = u.id
       LEFT JOIN (
-        SELECT lecture_id, user_id,
-               SUM(completed) AS done,
-               COUNT(*)       AS total
+        -- 시청 시간 기반 진도율 (getLectureProgress와 동일 방식)
+        SELECT
+          user_id,
+          COUNT(*) AS total_count,
+          SUM(completed) AS completed_count,
+          CASE
+            WHEN SUM(duration_sec) > 0
+            THEN LEAST(ROUND(SUM(LEAST(watched_sec, duration_sec)) / SUM(duration_sec) * 100), 100)
+            ELSE ROUND(SUM(completed) / NULLIF(COUNT(*), 0) * 100)
+          END AS progress_percent
         FROM content_progress
         WHERE lecture_id = ?
         GROUP BY user_id
       ) prog ON prog.user_id = u.id
-      LEFT JOIN reviews r      ON r.lecture_id  = ? AND r.student_id  = u.id
+      LEFT JOIN reviews r         ON r.lecture_id  = ? AND r.student_id  = u.id
       LEFT JOIN growth_reports gr ON gr.lecture_id = ? AND gr.student_id = u.id
       ORDER BY a.created_at ASC
     `, [lecture_id, lecture_id, lecture_id, lecture_id])

@@ -101,6 +101,7 @@ export default function LectureContentPage() {
   selectedRef.current = selected
   contentsRef.current = contents
 
+  // ── 전체 진도 로드 ─────────────────────────────────────────────
   const loadProgress = useCallback(async () => {
     try {
       const res = await api.get(`/progress/${lectureId}`)
@@ -112,6 +113,7 @@ export default function LectureContentPage() {
     } catch {}
   }, [lectureId])
 
+  // ── 진도 저장 ──────────────────────────────────────────────────
   const saveProgress = useCallback(async (contentId, watchedSec, durationSec) => {
     if (!contentId || !durationSec) return
     try {
@@ -121,7 +123,9 @@ export default function LectureContentPage() {
         watched_sec:  Math.floor(watchedSec),
         duration_sec: Math.floor(durationSec),
       })
+      // 전체 진도 갱신 (모든 영상 합산)
       await loadProgress()
+
       if (res.data.data?.completed === 1 && !completedNotifiedRef.current.has(contentId)) {
         completedNotifiedRef.current.add(contentId)
         const currentList = contentsRef.current
@@ -146,18 +150,29 @@ export default function LectureContentPage() {
             saveTimerRef.current = setInterval(() => {
               const player = playerRef.current; const content = selectedRef.current
               if (!player || !content) return
-              try { const cur = player.getCurrentTime(); const dur = player.getDuration(); if (dur > 0) saveProgress(content.id, cur, dur) } catch {}
+              try {
+                const cur = player.getCurrentTime()
+                const dur = player.getDuration()
+                if (dur > 0) saveProgress(content.id, cur, dur)
+              } catch {}
             }, 5000)
           } else {
             clearInterval(saveTimerRef.current)
             const player = playerRef.current; const content = selectedRef.current
-            if (player && content) { try { const cur = player.getCurrentTime(); const dur = player.getDuration(); if (dur > 0) saveProgress(content.id, cur, dur) } catch {} }
+            if (player && content) {
+              try {
+                const cur = player.getCurrentTime()
+                const dur = player.getDuration()
+                if (dur > 0) saveProgress(content.id, cur, dur)
+              } catch {}
+            }
           }
         },
       },
     })
   }, [saveProgress])
 
+  // ── 초기 로드 ─────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([api.get(`/lectures/${lectureId}`), api.get(`/lectures/${lectureId}/contents`)])
       .then(async ([lRes, cRes]) => {
@@ -172,18 +187,39 @@ export default function LectureContentPage() {
         .finally(() => setLoading(false))
   }, [lectureId])
 
+  // ── 영상 전환 시 → 진도 재로드 + 플레이어 생성 ────────────────
   useEffect(() => {
     if (!selected) return
+
     localStorage.setItem(`last_content_${lectureId}`, selected.id)
-    api.get(`/contents/${selected.id}/comments`).then(res => setComments(res.data.data || [])).catch(() => {})
+
+    // 영상 전환 시 전체 진도 다시 로드 (이전 영상 저장분 반영)
+    loadProgress()
+
+    // 댓글 로드
+    api.get(`/contents/${selected.id}/comments`)
+      .then(res => setComments(res.data.data || []))
+      .catch(() => {})
+
     if (selected.type === 'video') {
       const videoId = extractVideoId(selected.url)
       if (videoId) {
-        const prog = progressMap[selected.id]
-        const startAt = (prog && prog.duration_sec > 0 && !prog.completed) ? Math.max(0, prog.watched_sec - 2) : 0
-        setTimeout(() => createPlayer(videoId, startAt), 100)
+        // progressMap은 loadProgress 후 업데이트되므로 잠깐 기다렸다가 이어보기 위치 결정
+        setTimeout(async () => {
+          try {
+            const res = await api.get(`/progress/${lectureId}/content/${selected.id}`)
+            const prog = res.data.data
+            const startAt = (prog && prog.duration_sec > 0 && !prog.completed)
+              ? Math.max(0, prog.watched_sec - 2)
+              : 0
+            createPlayer(videoId, startAt)
+          } catch {
+            createPlayer(videoId, 0)
+          }
+        }, 100)
       }
     }
+
     return () => { clearInterval(saveTimerRef.current) }
   }, [selected?.id])
 
@@ -229,7 +265,7 @@ export default function LectureContentPage() {
           </button>
           <h2 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2">{lecture?.title}</h2>
 
-          {/* ── 진도율 (시청 시간 기반) ── */}
+          {/* 전체 진도율 (모든 영상 합산) */}
           {lectureProgress && (
             <div className="mt-2 space-y-1">
               <div className="flex justify-between text-xs text-gray-400 dark:text-[#6b7280]">
@@ -240,7 +276,6 @@ export default function LectureContentPage() {
                 <div className={`h-full rounded-full transition-all ${lectureProgress.percent >= 80 ? 'bg-green-500' : 'bg-brand-500'}`}
                   style={{ width: `${lectureProgress.percent}%` }} />
               </div>
-              {/* 시청 시간 / 전체 시간 */}
               {lectureProgress.total_duration > 0 && (
                 <p className="text-[10px] text-gray-400 dark:text-[#6b7280]">
                   {lectureProgress.total_watched_fmt} / {lectureProgress.total_duration_fmt}
@@ -257,21 +292,26 @@ export default function LectureContentPage() {
           {contents.map((c, idx) => {
             const prog       = progressMap[c.id]
             const isDone     = prog?.completed === 1
-            const watchedPct = (prog && prog.duration_sec > 0) ? Math.min((prog.watched_sec / prog.duration_sec) * 100, 100) : 0
+            const watchedPct = (prog && prog.duration_sec > 0)
+              ? Math.min((prog.watched_sec / prog.duration_sec) * 100, 100)
+              : 0
             return (
               <button key={c.id} onClick={() => handleSelectContent(c)}
                 className={`w-full text-left px-4 py-3.5 border-b border-gray-50 dark:border-[#1e2235] transition-colors
                   ${selected?.id === c.id ? 'bg-brand-50 dark:bg-[#1e2a4a] border-l-2 border-l-brand-500' : 'hover:bg-gray-50 dark:hover:bg-[#1a1d2e]'}`}>
                 <div className="flex items-start gap-2.5">
-                  <span className={`text-xs font-bold mt-0.5 shrink-0 w-5 text-center ${isDone ? 'text-green-500' : selected?.id === c.id ? 'text-brand-500' : 'text-gray-400 dark:text-[#6b7280]'}`}>
+                  <span className={`text-xs font-bold mt-0.5 shrink-0 w-5 text-center
+                    ${isDone ? 'text-green-500' : selected?.id === c.id ? 'text-brand-500' : 'text-gray-400 dark:text-[#6b7280]'}`}>
                     {isDone ? '✓' : String(idx + 1).padStart(2, '0')}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-medium line-clamp-2 leading-snug ${selected?.id === c.id ? 'text-brand-600 dark:text-brand-400' : 'text-gray-700 dark:text-slate-300'}`}>
+                    <p className={`text-sm font-medium line-clamp-2 leading-snug
+                      ${selected?.id === c.id ? 'text-brand-600 dark:text-brand-400' : 'text-gray-700 dark:text-slate-300'}`}>
                       {c.title}
                     </p>
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${c.type === 'video' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium
+                        ${c.type === 'video' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
                         {c.type === 'video' ? '▶ 영상' : '📄 자료'}
                       </span>
                       {!isDone && watchedPct > 0 && (
@@ -324,13 +364,19 @@ export default function LectureContentPage() {
                   <span className="text-xs px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg font-medium">✓ 완료</span>
                 )}
               </div>
-              {selected.description && <p className="text-sm text-gray-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">{selected.description}</p>}
+              {selected.description && (
+                <p className="text-sm text-gray-600 dark:text-slate-300 leading-relaxed whitespace-pre-line">{selected.description}</p>
+              )}
             </div>
             <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-4">
-              <h2 className="text-sm font-bold text-gray-800 dark:text-white">댓글 <span className="text-gray-400 font-normal">{comments.length}</span></h2>
+              <h2 className="text-sm font-bold text-gray-800 dark:text-white">
+                댓글 <span className="text-gray-400 font-normal">{comments.length}</span>
+              </h2>
               {user ? (
                 <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-xs font-bold text-white shrink-0">{user.nickname?.[0]?.toUpperCase()}</div>
+                  <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                    {user.nickname?.[0]?.toUpperCase()}
+                  </div>
                   <div className="flex-1 space-y-2">
                     <textarea value={newComment} onChange={e => setNewComment(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleComment() }}
@@ -354,7 +400,9 @@ export default function LectureContentPage() {
                   <p className="text-sm text-gray-400 text-center py-4">첫 댓글을 남겨보세요!</p>
                 ) : comments.map(c => (
                   <div key={c.id} className="flex gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-[#2a2d3e] flex items-center justify-center text-xs font-bold text-gray-600 dark:text-slate-300 shrink-0">{c.nickname?.[0]?.toUpperCase()}</div>
+                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-[#2a2d3e] flex items-center justify-center text-xs font-bold text-gray-600 dark:text-slate-300 shrink-0">
+                      {c.nickname?.[0]?.toUpperCase()}
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-semibold text-gray-800 dark:text-white">{c.nickname}</span>

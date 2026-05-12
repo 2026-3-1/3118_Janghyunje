@@ -31,17 +31,36 @@ export const createReview = async (req, res, next) => {
     if (!apps.length)
       return res.status(403).json({ success: false, message: '수강이 승인된 강의에만 리뷰를 작성할 수 있습니다.' })
 
-    // 진도율 60% 이상 확인
-    const [[{ total }]] = await pool.query(
-      'SELECT COUNT(*) AS total FROM lecture_contents WHERE lecture_id = ?',
-      [lecture_id]
-    )
-    if (total > 0) {
-      const [[{ done }]] = await pool.query(
-        'SELECT COUNT(*) AS done FROM content_progress WHERE user_id = ? AND lecture_id = ? AND completed = 1',
-        [student_id, lecture_id]
-      )
-      const percent = Math.round((done / total) * 100)
+    // 진도율 60% 이상 확인 — 실제 시청 시간 기반 (getLectureProgress와 동일 방식)
+    const [items] = await pool.query(`
+      SELECT COALESCE(cp.watched_sec, 0)  AS watched_sec,
+             COALESCE(cp.duration_sec, 0) AS duration_sec
+      FROM lecture_contents lc
+      LEFT JOIN content_progress cp
+        ON cp.content_id = lc.id AND cp.user_id = ?
+      WHERE lc.lecture_id = ?
+    `, [student_id, lecture_id])
+
+    if (items.length > 0) {
+      const totalDuration = items.reduce((s, i) => s + Number(i.duration_sec), 0)
+      const totalWatched  = items.reduce((s, i) =>
+        s + Math.min(Number(i.watched_sec), Number(i.duration_sec) || Number(i.watched_sec)), 0)
+
+      // duration 정보 없으면 completed 수 기반 fallback
+      let percent
+      if (totalDuration > 0) {
+        percent = Math.min(Math.round((totalWatched / totalDuration) * 100), 100)
+      } else {
+        const [[{ total }]] = await pool.query(
+          'SELECT COUNT(*) AS total FROM lecture_contents WHERE lecture_id = ?', [lecture_id]
+        )
+        const [[{ done }]] = await pool.query(
+          'SELECT COUNT(*) AS done FROM content_progress WHERE user_id = ? AND lecture_id = ? AND completed = 1',
+          [student_id, lecture_id]
+        )
+        percent = total > 0 ? Math.round((done / total) * 100) : 0
+      }
+
       if (percent < 60)
         return res.status(403).json({
           success: false,

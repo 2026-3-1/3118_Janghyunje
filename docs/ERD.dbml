@@ -1,0 +1,135 @@
+// GCP (Game Coaching Platform) — ERD (DBML)
+// 작성자: 18 장현제
+// 작성일: 2026년 5월 8일
+
+// ── P1 테이블 ─────────────────────────────────────────────────
+
+Table users {
+  id         int          [pk, increment]
+  email      varchar(255) [not null, unique, note: '로그인 ID']
+  password   varchar(255) [not null, note: 'bcrypt(salt=10) 해시']
+  nickname   varchar(100) [not null, unique]
+  role       enum('student', 'coach') [not null, default: 'student']
+  game       varchar(50)  [note: '주 게임']
+  tier       varchar(50)  [note: '현재 티어']
+  created_at timestamp    [default: `CURRENT_TIMESTAMP`]
+}
+
+Table lectures {
+  id             int          [pk, increment]
+  coach_id       int          [not null, ref: > users.id]
+  title          varchar(255) [not null]
+  description    text
+  game           varchar(50)  [not null]
+  price          int          [not null, default: 0]
+  original_price int          [note: '정가 (할인 전)']
+  target_tier    varchar(50)
+  position       varchar(50)
+  coach_type     varchar(50)
+  status         enum('active', 'inactive') [default: 'active']
+  created_at     timestamp    [default: `CURRENT_TIMESTAMP`]
+}
+
+Table applications {
+  id         int       [pk, increment]
+  lecture_id int       [not null, ref: > lectures.id]
+  student_id int       [not null, ref: > users.id]
+  status     enum('pending', 'approved', 'rejected') [default: 'pending', note: 'P2: 결제 완료 시 즉시 approved']
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    (lecture_id, student_id) [unique, name: 'uq_application', note: '중복 신청 방지']
+  }
+}
+
+Table reviews {
+  id         int      [pk, increment]
+  lecture_id int      [not null, ref: > lectures.id]
+  student_id int      [not null, ref: > users.id]
+  rating     tinyint  [not null, note: '1~5']
+  comment    text
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    (lecture_id, student_id) [unique, name: 'uq_review', note: '중복 작성 방지']
+  }
+}
+
+Table lecture_contents {
+  id          int          [pk, increment]
+  lecture_id  int          [not null, ref: > lectures.id]
+  title       varchar(255) [not null]
+  description text
+  type        enum('video', 'material') [not null, default: 'video']
+  url         varchar(500) [not null, note: 'YouTube embed URL 또는 자료 링크']
+  order_num   int          [not null, default: 0]
+  created_at  timestamp    [default: `CURRENT_TIMESTAMP`]
+}
+
+Table comments {
+  id         int       [pk, increment]
+  content_id int       [not null, ref: > lecture_contents.id]
+  user_id    int       [not null, ref: > users.id]
+  comment    text      [not null]
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+Table posts {
+  id         int          [pk, increment]
+  user_id    int          [not null, ref: > users.id]
+  category   enum('question', 'tip') [not null, default: 'question']
+  title      varchar(255) [not null]
+  content    text         [not null]
+  view_count int          [not null, default: 0]
+  created_at timestamp    [default: `CURRENT_TIMESTAMP`]
+  updated_at timestamp    [default: `CURRENT_TIMESTAMP`]
+}
+
+Table post_comments {
+  id         int       [pk, increment]
+  post_id    int       [not null, ref: > posts.id]
+  user_id    int       [not null, ref: > users.id]
+  content    text      [not null]
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+}
+
+// ── P2 추가 테이블 ────────────────────────────────────────────
+
+Table cart_items {
+  id         int       [pk, increment]
+  user_id    int       [not null, ref: > users.id]
+  lecture_id int       [not null, ref: > lectures.id]
+  created_at timestamp [default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    (user_id, lecture_id) [unique, name: 'uq_cart', note: '중복 담기 방지']
+  }
+}
+
+Table content_progress {
+  id           int        [pk, increment]
+  user_id      int        [not null, ref: > users.id]
+  content_id   int        [not null, ref: > lecture_contents.id]
+  lecture_id   int        [not null, ref: > lectures.id]
+  watched_sec  int        [default: 0, note: '시청한 초']
+  duration_sec int        [default: 0, note: '전체 영상 길이(초)']
+  completed    tinyint(1) [default: 0, note: '98% 이상 시청 시 1']
+  updated_at   timestamp  [default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    (user_id, content_id) [unique, name: 'uq_progress', note: '중복 방지 (UPSERT)']
+  }
+}
+
+Table growth_reports {
+  id         int          [pk, increment]
+  lecture_id int          [not null, ref: > lectures.id]
+  student_id int          [not null, ref: > users.id]
+  coach_id   int          [not null, ref: > users.id]
+  title      varchar(200) [not null]
+  content    text         [not null]
+  created_at timestamp    [default: `CURRENT_TIMESTAMP`]
+  updated_at timestamp    [default: `CURRENT_TIMESTAMP`]
+
+  Note: '(lecture_id, student_id) 조합으로 1개만 유지 — 재작성 시 UPDATE'
+}
