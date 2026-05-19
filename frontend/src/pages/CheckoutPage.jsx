@@ -15,7 +15,6 @@ const GAME_LABEL = {
   battleground: '배그', tft: 'TFT', starcraft2: 'SC2',
 }
 
-// maxLength 제거하고 함수 내에서 16자리 제한
 function formatCardNumber(raw) {
   const digits = raw.replace(/[^0-9]/g, '').slice(0, 16)
   const parts  = digits.match(/.{1,4}/g) || []
@@ -62,6 +61,12 @@ export default function CheckoutPage() {
     setLoading(true)
     try {
       await api.post('/applications', { lecture_id: lecture.id })
+
+      // ✅ 결제 완료 후 장바구니에서 해당 강의 삭제
+      if (fromCart) {
+        try { await api.delete(`/cart/${lecture.id}`) } catch {}
+      }
+
       setDone(true)
     } catch (err) {
       alert(err.response?.data?.message || '결제 처리 중 오류가 발생했습니다.')
@@ -86,7 +91,7 @@ export default function CheckoutPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">결제 완료!</h1>
           <p className="text-gray-500 dark:text-[#8892a4] text-sm">
-            수강 신청이 완료됐습니다.<br />코치 승인 후 강의를 수강할 수 있어요.
+            수강 신청이 완료됐습니다.<br />지금 바로 강의를 수강할 수 있어요.
           </p>
         </div>
         <div className="bg-gray-50 dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4 text-left space-y-2">
@@ -191,45 +196,31 @@ export default function CheckoutPage() {
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-400 dark:text-[#6b7280] mb-1.5 block">카드 번호</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={cardNumber}
+              <input type="text" inputMode="numeric" value={cardNumber}
                 onChange={e => setCardNumber(formatCardNumber(e.target.value))}
                 placeholder="0000 - 0000 - 0000 - 0000"
                 className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
                            text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                           outline-none focus:border-brand-400 transition-colors tracking-widest font-mono"
-              />
+                           outline-none focus:border-brand-400 transition-colors tracking-widest font-mono" />
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="text-xs text-gray-400 dark:text-[#6b7280] mb-1.5 block">유효기간</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={expiry}
+                <input type="text" inputMode="numeric" value={expiry}
                   onChange={e => setExpiry(formatExpiry(e.target.value))}
-                  placeholder="MM / YY"
-                  maxLength={7}
+                  placeholder="MM / YY" maxLength={7}
                   className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
                              text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                             outline-none focus:border-brand-400 transition-colors font-mono"
-                />
+                             outline-none focus:border-brand-400 transition-colors font-mono" />
               </div>
               <div className="flex-1">
                 <label className="text-xs text-gray-400 dark:text-[#6b7280] mb-1.5 block">CVC</label>
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  value={cvc}
+                <input type="password" inputMode="numeric" value={cvc}
                   onChange={e => setCvc(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
-                  placeholder="•••"
-                  maxLength={3}
+                  placeholder="•••" maxLength={3}
                   className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
                              text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                             outline-none focus:border-brand-400 transition-colors font-mono"
-                />
+                             outline-none focus:border-brand-400 transition-colors font-mono" />
               </div>
             </div>
           </div>
@@ -280,10 +271,6 @@ export default function CheckoutPage() {
             : 'bg-brand-500 hover:bg-brand-600 text-white shadow-lg shadow-brand-500/30'}`}>
         {loading ? '결제 처리 중...' : `${Number(lecture.price).toLocaleString()}원 결제하기`}
       </button>
-
-      <p className="text-xs text-center text-gray-400 dark:text-[#6b7280]">
-        결제 완료 후 코치 승인을 받으면 강의를 수강할 수 있습니다.
-      </p>
     </div>
   )
 }

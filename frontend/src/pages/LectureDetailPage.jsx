@@ -5,7 +5,6 @@ import { TierBadge, GameBadge, StarRating, CardBadge, LoadingScreen } from '../c
 import useAuthStore from '../store/useAuthStore'
 import api from '../services/api'
 
-// 결제 완료 시 자동 승인 — pending/rejected 제거
 const APPLICATION_STATUS = {
   approved: { label: '수강 중', cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 cursor-default' },
 }
@@ -76,7 +75,7 @@ export default function LectureDetailPage() {
   }, [id])
 
   useEffect(() => {
-    if (!user) return
+    if (!user || user.role !== 'student') return
     api.get('/applications/student')
       .then(res => {
         const found = (res.data.data || []).find(a => a.lecture_id === Number(id))
@@ -208,16 +207,35 @@ export default function LectureDetailPage() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-          {/* 수강 중 */}
-          {(applicationStatus === 'approved' || isMyLecture) && (
+
+          {/* ── 코치 본인 강의 — 미리보기 + 수정 버튼 ── */}
+          {isMyLecture && (
+            <div className="space-y-2">
+              <button onClick={() => navigate(`/lectures/${id}/contents`)}
+                className="w-full py-3 bg-slate-600 hover:bg-slate-700 dark:bg-[#2a2d3e] dark:hover:bg-[#333650] text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2">
+                👁️ 강의 미리보기 (코치 전용)
+              </button>
+              <button onClick={() => navigate(`/lectures/${id}/manage`)}
+                className="w-full py-2.5 bg-brand-50 dark:bg-[#1e2a4a] hover:bg-brand-100 border border-brand-200 dark:border-brand-700/50 text-brand-600 dark:text-brand-400 font-bold text-sm rounded-xl transition-colors">
+                ✏️ 강의 자료 관리
+              </button>
+              <button onClick={() => navigate(`/coach/lecture/edit/${id}`)}
+                className="w-full py-2.5 bg-gray-50 dark:bg-[#1a1d2e] hover:bg-gray-100 border border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300 font-bold text-sm rounded-xl transition-colors">
+                ⚙️ 강의 정보 수정
+              </button>
+            </div>
+          )}
+
+          {/* ── 수강 중 (학생) ── */}
+          {!isMyLecture && applicationStatus === 'approved' && (
             <button onClick={() => navigate(`/lectures/${id}/contents`)}
               className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold text-base rounded-xl transition-colors">
               ▶ 강의 수강하기
             </button>
           )}
 
-          {/* 미신청 */}
-          {!applicationStatus && !isMyLecture && (
+          {/* ── 미신청 (학생) ── */}
+          {!isMyLecture && !applicationStatus && (
             <>
               <button
                 onClick={() => {
