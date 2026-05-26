@@ -61,12 +61,8 @@ export default function CheckoutPage() {
     setLoading(true)
     try {
       await api.post('/applications', { lecture_id: lecture.id })
-
-      // ✅ 결제 완료 후 장바구니에서 해당 강의 삭제
-      if (fromCart) {
-        try { await api.delete(`/cart/${lecture.id}`) } catch {}
-      }
-
+      // 결제 완료 후 장바구니에서 해당 강의 삭제 (담겨있든 없든 시도, 없으면 무시)
+      try { await api.delete(`/cart/${lecture.id}`) } catch {}
       setDone(true)
     } catch (err) {
       alert(err.response?.data?.message || '결제 처리 중 오류가 발생했습니다.')
@@ -116,9 +112,9 @@ export default function CheckoutPage() {
             className="flex-1 py-3 bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm rounded-xl transition-colors">
             내 수강 목록
           </button>
-          <button onClick={() => navigate(fromCart ? '/cart' : '/lectures')}
+          <button onClick={() => navigate('/lectures')}
             className="flex-1 py-3 bg-gray-100 dark:bg-[#1a1d2e] text-gray-600 dark:text-slate-300 font-bold text-sm rounded-xl transition-colors">
-            {fromCart ? '장바구니로' : '강의 둘러보기'}
+            강의 둘러보기
           </button>
         </div>
       </div>
@@ -127,28 +123,21 @@ export default function CheckoutPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
-
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(-1)}
-          className="text-sm text-gray-400 hover:text-brand-500 transition-colors">← 뒤로</button>
+        <button onClick={() => navigate(-1)} className="text-sm text-gray-400 hover:text-brand-500 transition-colors">← 뒤로</button>
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">결제하기</h1>
         {fromCart && (
-          <span className="ml-auto text-xs text-gray-400 dark:text-[#6b7280]">
-            {queue.length + 1}개 중 1번째
-          </span>
+          <span className="ml-auto text-xs text-gray-400 dark:text-[#6b7280]">{queue.length + 1}개 중 1번째</span>
         )}
       </div>
 
-      {/* 강의 정보 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5">
         <p className="text-xs text-gray-400 dark:text-[#6b7280] mb-3 font-medium">수강 신청 강의</p>
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-2xl shrink-0">🎮</div>
           <div className="flex-1 min-w-0 space-y-1">
             <p className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2">{lecture.title}</p>
-            <p className="text-xs text-gray-400 dark:text-[#6b7280]">
-              {GAME_LABEL[lecture.game] || lecture.game} · {lecture.coach?.nickname} 코치
-            </p>
+            <p className="text-xs text-gray-400 dark:text-[#6b7280]">{GAME_LABEL[lecture.game] || lecture.game} · {lecture.coach?.nickname} 코치</p>
             <div className="flex items-baseline gap-2 pt-1">
               <span className="text-lg font-extrabold text-gray-900 dark:text-white">{Number(lecture.price).toLocaleString()}원</span>
               {lecture.originalPrice && (
@@ -163,78 +152,60 @@ export default function CheckoutPage() {
         {queue.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#2a2d3e] space-y-1">
             <p className="text-xs text-gray-400 dark:text-[#6b7280]">다음 결제 예정</p>
-            {queue.slice(0, 2).map((q, i) => (
-              <p key={i} className="text-xs text-gray-500 dark:text-slate-400 line-clamp-1">· {q.title}</p>
-            ))}
+            {queue.slice(0, 2).map((q, i) => <p key={i} className="text-xs text-gray-500 line-clamp-1">· {q.title}</p>)}
             {queue.length > 2 && <p className="text-xs text-gray-400">외 {queue.length - 2}개</p>}
           </div>
         )}
       </div>
 
-      {/* 결제 수단 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-3">
         <p className="text-sm font-bold text-gray-800 dark:text-white">결제 수단</p>
         <div className="grid grid-cols-2 gap-2">
           {PAYMENT_METHODS.map(m => (
             <button key={m.id} onClick={() => setPayMethod(m.id)}
               className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-sm font-medium transition-all
-                ${payMethod === m.id
-                  ? 'border-brand-500 bg-brand-50 dark:bg-[#1e2a4a] text-brand-600 dark:text-brand-400'
-                  : 'border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300 hover:border-brand-300'}`}>
-              <span className="text-lg">{m.icon}</span>
-              {m.label}
+                ${payMethod === m.id ? 'border-brand-500 bg-brand-50 dark:bg-[#1e2a4a] text-brand-600 dark:text-brand-400' : 'border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300 hover:border-brand-300'}`}>
+              <span className="text-lg">{m.icon}</span>{m.label}
               {payMethod === m.id && <span className="ml-auto text-brand-500 text-xs">✓</span>}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 카드 입력 */}
       {payMethod === 'card' && (
         <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-3">
           <p className="text-sm font-bold text-gray-800 dark:text-white">카드 정보</p>
           <div className="space-y-3">
             <div>
-              <label className="text-xs text-gray-400 dark:text-[#6b7280] mb-1.5 block">카드 번호</label>
-              <input type="text" inputMode="numeric" value={cardNumber}
-                onChange={e => setCardNumber(formatCardNumber(e.target.value))}
+              <label className="text-xs text-gray-400 mb-1.5 block">카드 번호</label>
+              <input type="text" inputMode="numeric" value={cardNumber} onChange={e => setCardNumber(formatCardNumber(e.target.value))}
                 placeholder="0000 - 0000 - 0000 - 0000"
-                className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
-                           text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                           outline-none focus:border-brand-400 transition-colors tracking-widest font-mono" />
+                className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-brand-400 tracking-widest font-mono text-gray-800 dark:text-slate-200 placeholder:text-gray-300" />
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="text-xs text-gray-400 dark:text-[#6b7280] mb-1.5 block">유효기간</label>
-                <input type="text" inputMode="numeric" value={expiry}
-                  onChange={e => setExpiry(formatExpiry(e.target.value))}
+                <label className="text-xs text-gray-400 mb-1.5 block">유효기간</label>
+                <input type="text" inputMode="numeric" value={expiry} onChange={e => setExpiry(formatExpiry(e.target.value))}
                   placeholder="MM / YY" maxLength={7}
-                  className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
-                             text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                             outline-none focus:border-brand-400 transition-colors font-mono" />
+                  className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-brand-400 font-mono text-gray-800 dark:text-slate-200 placeholder:text-gray-300" />
               </div>
               <div className="flex-1">
-                <label className="text-xs text-gray-400 dark:text-[#6b7280] mb-1.5 block">CVC</label>
-                <input type="password" inputMode="numeric" value={cvc}
-                  onChange={e => setCvc(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                <label className="text-xs text-gray-400 mb-1.5 block">CVC</label>
+                <input type="password" inputMode="numeric" value={cvc} onChange={e => setCvc(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
                   placeholder="•••" maxLength={3}
-                  className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5
-                             text-sm text-gray-800 dark:text-slate-200 placeholder:text-gray-300 dark:placeholder:text-[#4a5568]
-                             outline-none focus:border-brand-400 transition-colors font-mono" />
+                  className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm outline-none focus:border-brand-400 font-mono text-gray-800 dark:text-slate-200 placeholder:text-gray-300" />
               </div>
             </div>
           </div>
-          <p className="text-xs text-gray-400 dark:text-[#6b7280]">🔒 카드 정보는 안전하게 암호화되어 처리됩니다.</p>
+          <p className="text-xs text-gray-400">🔒 카드 정보는 안전하게 암호화되어 처리됩니다.</p>
         </div>
       )}
 
-      {/* 결제 금액 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-3">
         <p className="text-sm font-bold text-gray-800 dark:text-white">결제 금액</p>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between text-gray-500 dark:text-[#8892a4]">
-            <span>강의 정가</span>
-            <span>{Number(lecture.originalPrice || lecture.price).toLocaleString()}원</span>
+            <span>강의 정가</span><span>{Number(lecture.originalPrice || lecture.price).toLocaleString()}원</span>
           </div>
           {lecture.originalPrice && (
             <div className="flex justify-between text-orange-500">
@@ -249,25 +220,17 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* 약관 동의 */}
       <label className="flex items-start gap-2.5 cursor-pointer select-none">
-        <input type="checkbox" checked={agreeTos} onChange={e => setAgreeTos(e.target.checked)}
-          className="w-4 h-4 accent-brand-500 cursor-pointer mt-0.5 shrink-0" />
+        <input type="checkbox" checked={agreeTos} onChange={e => setAgreeTos(e.target.checked)} className="w-4 h-4 accent-brand-500 cursor-pointer mt-0.5 shrink-0" />
         <span className="text-sm text-gray-600 dark:text-slate-300">
-          주문 내용을 확인했으며{' '}
-          <span className="text-brand-500 underline cursor-pointer">이용약관</span>
-          {' '}및{' '}
-          <span className="text-brand-500 underline cursor-pointer">결제 정책</span>에 동의합니다.
+          주문 내용을 확인했으며 <span className="text-brand-500 underline cursor-pointer">이용약관</span> 및 <span className="text-brand-500 underline cursor-pointer">결제 정책</span>에 동의합니다.
         </span>
       </label>
 
-      {/* 결제 버튼 */}
       <button onClick={handlePay} disabled={loading || !agreeTos}
         className={`w-full py-4 rounded-xl font-extrabold text-base transition-colors
-          ${loading
-            ? 'bg-brand-400 text-white cursor-wait'
-            : !agreeTos
-            ? 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-400 cursor-not-allowed'
+          ${loading ? 'bg-brand-400 text-white cursor-wait'
+            : !agreeTos ? 'bg-gray-100 dark:bg-[#1a1d2e] text-gray-400 cursor-not-allowed'
             : 'bg-brand-500 hover:bg-brand-600 text-white shadow-lg shadow-brand-500/30'}`}>
         {loading ? '결제 처리 중...' : `${Number(lecture.price).toLocaleString()}원 결제하기`}
       </button>
