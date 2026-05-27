@@ -1,0 +1,6 @@
+# 빌드 결과물 언어 통계 제외
+frontend/dist/** linguist-generated=true
+frontend/dist/** linguist-vendored=true
+
+# 설정 파일 제외
+*.config.js linguist-language=JavaScript
