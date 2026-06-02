@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/useAuthStore'
 
-const TOSS_CLIENT_KEY = 'test_ck_ALnQvDd2VJqJqeylKnjN3Mj7X41m'
+const TOSS_CLIENT_KEY = import.meta.env.VITE_TOSS_CLIENT_KEY
 
 const GAME_LABEL = {
   lol: 'LoL', valorant: '발로란트', overwatch2: '오버워치2',
@@ -56,11 +56,8 @@ export default function CheckoutPage() {
       const tossPayments = TossPayments(TOSS_CLIENT_KEY)
 
       const orderId   = `order-${Date.now()}-${user.id}`
-      const orderName = lecture.title.length > 30
-        ? lecture.title.slice(0, 30) + '...'
-        : lecture.title
+      const orderName = lecture.title.length > 30 ? lecture.title.slice(0, 30) + '...' : lecture.title
 
-      // successUrl → 별도 페이지로 분리
       const successUrl = `${window.location.origin}/checkout/success?lectureId=${lecture.id}&amount=${lecture.price}&email=${encodeURIComponent(receiptEmail)}`
       const failUrl    = `${window.location.origin}/checkout/fail`
 
@@ -74,9 +71,7 @@ export default function CheckoutPage() {
         failUrl,
       })
     } catch (err) {
-      if (err.code !== 'USER_CANCEL') {
-        setError('결제 창을 열 수 없습니다. 잠시 후 다시 시도해주세요.')
-      }
+      if (err.code !== 'USER_CANCEL') setError('결제 창을 열 수 없습니다. 잠시 후 다시 시도해주세요.')
       setLoading(false)
     }
   }
