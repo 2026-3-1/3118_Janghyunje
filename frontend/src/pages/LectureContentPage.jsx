@@ -101,7 +101,6 @@ export default function LectureContentPage() {
   selectedRef.current = selected
   contentsRef.current = contents
 
-  // ── 전체 진도 로드 ─────────────────────────────────────────────
   const loadProgress = useCallback(async () => {
     try {
       const res = await api.get(`/progress/${lectureId}`)
@@ -113,7 +112,6 @@ export default function LectureContentPage() {
     } catch {}
   }, [lectureId])
 
-  // ── 진도 저장 ──────────────────────────────────────────────────
   const saveProgress = useCallback(async (contentId, watchedSec, durationSec) => {
     if (!contentId || !durationSec) return
     try {
@@ -123,9 +121,7 @@ export default function LectureContentPage() {
         watched_sec:  Math.floor(watchedSec),
         duration_sec: Math.floor(durationSec),
       })
-      // 전체 진도 갱신 (모든 영상 합산)
       await loadProgress()
-
       if (res.data.data?.completed === 1 && !completedNotifiedRef.current.has(contentId)) {
         completedNotifiedRef.current.add(contentId)
         const currentList = contentsRef.current
@@ -172,7 +168,6 @@ export default function LectureContentPage() {
     })
   }, [saveProgress])
 
-  // ── 초기 로드 ─────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([api.get(`/lectures/${lectureId}`), api.get(`/lectures/${lectureId}/contents`)])
       .then(async ([lRes, cRes]) => {
@@ -187,39 +182,27 @@ export default function LectureContentPage() {
         .finally(() => setLoading(false))
   }, [lectureId])
 
-  // ── 영상 전환 시 → 진도 재로드 + 플레이어 생성 ────────────────
   useEffect(() => {
     if (!selected) return
-
     localStorage.setItem(`last_content_${lectureId}`, selected.id)
-
-    // 영상 전환 시 전체 진도 다시 로드 (이전 영상 저장분 반영)
     loadProgress()
-
-    // 댓글 로드
     api.get(`/contents/${selected.id}/comments`)
       .then(res => setComments(res.data.data || []))
       .catch(() => {})
-
     if (selected.type === 'video') {
       const videoId = extractVideoId(selected.url)
       if (videoId) {
-        // progressMap은 loadProgress 후 업데이트되므로 잠깐 기다렸다가 이어보기 위치 결정
         setTimeout(async () => {
           try {
             const res = await api.get(`/progress/${lectureId}/content/${selected.id}`)
             const prog = res.data.data
             const startAt = (prog && prog.duration_sec > 0 && !prog.completed)
-              ? Math.max(0, prog.watched_sec - 2)
-              : 0
+              ? Math.max(0, prog.watched_sec - 2) : 0
             createPlayer(videoId, startAt)
-          } catch {
-            createPlayer(videoId, 0)
-          }
+          } catch { createPlayer(videoId, 0) }
         }, 100)
       }
     }
-
     return () => { clearInterval(saveTimerRef.current) }
   }, [selected?.id])
 
@@ -264,8 +247,6 @@ export default function LectureContentPage() {
             ← 강의 상세로
           </button>
           <h2 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-2">{lecture?.title}</h2>
-
-          {/* 전체 진도율 (모든 영상 합산) */}
           {lectureProgress && (
             <div className="mt-2 space-y-1">
               <div className="flex justify-between text-xs text-gray-400 dark:text-[#6b7280]">
@@ -281,11 +262,17 @@ export default function LectureContentPage() {
                   {lectureProgress.total_watched_fmt} / {lectureProgress.total_duration_fmt}
                 </p>
               )}
-              {lectureProgress.can_review && (
-                <p className="text-[10px] text-green-500">✓ 리뷰 작성 가능</p>
-              )}
+              {lectureProgress.can_review && <p className="text-[10px] text-green-500">✓ 리뷰 작성 가능</p>}
             </div>
           )}
+        </div>
+
+        {/* Q&A 버튼 */}
+        <div className="px-4 py-2 border-b border-gray-100 dark:border-[#1e2235]">
+          <button onClick={() => navigate(`/lectures/${lectureId}/qna`)}
+            className="w-full py-2 bg-gray-50 dark:bg-[#1a1d2e] hover:bg-brand-50 dark:hover:bg-[#1e2a4a] border border-gray-200 dark:border-[#2a2d3e] hover:border-brand-400 rounded-lg text-xs font-medium text-gray-600 dark:text-slate-300 hover:text-brand-500 transition-colors">
+            💬 Q&A 게시판
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -293,8 +280,7 @@ export default function LectureContentPage() {
             const prog       = progressMap[c.id]
             const isDone     = prog?.completed === 1
             const watchedPct = (prog && prog.duration_sec > 0)
-              ? Math.min((prog.watched_sec / prog.duration_sec) * 100, 100)
-              : 0
+              ? Math.min((prog.watched_sec / prog.duration_sec) * 100, 100) : 0
             return (
               <button key={c.id} onClick={() => handleSelectContent(c)}
                 className={`w-full text-left px-4 py-3.5 border-b border-gray-50 dark:border-[#1e2235] transition-colors

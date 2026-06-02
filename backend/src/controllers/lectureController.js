@@ -1,18 +1,17 @@
 import pool from '../db/index.js'
+import { notifyFollowersNewLecture } from './followController.js'
+import logger from '../utils/logger.js'
 
-// GET /api/lectures — 공개 강의 목록 (전체)
+// GET /api/lectures — 공개 강의 목록
 export const getLectures = async (req, res, next) => {
   try {
     const { game, tier, maxPrice, keyword, coachType, position, sort } = req.query
 
     let sql = `
-      SELECT
-        l.*,
-        u.nickname AS coach_nickname,
-        u.tier     AS coach_tier,
-        COALESCE(AVG(r.rating), 0)  AS rating,
-        COUNT(DISTINCT r.id)         AS review_count,
-        COUNT(DISTINCT a.id)         AS enroll_count
+      SELECT l.*, u.nickname AS coach_nickname, u.tier AS coach_tier,
+             COALESCE(AVG(r.rating), 0) AS rating,
+             COUNT(DISTINCT r.id)        AS review_count,
+             COUNT(DISTINCT a.id)        AS enroll_count
       FROM lectures l
       JOIN users u ON l.coach_id = u.id
       LEFT JOIN reviews r ON r.lecture_id = l.id
@@ -32,7 +31,6 @@ export const getLectures = async (req, res, next) => {
     }
 
     sql += ' GROUP BY l.id, u.nickname, u.tier'
-
     const sortMap = {
       rating:     ' ORDER BY rating DESC',
       price_asc:  ' ORDER BY l.price ASC',
@@ -47,23 +45,20 @@ export const getLectures = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// GET /api/lectures/my — 코치 본인 강의 목록 (JWT에서 coach_id 추출)
+// GET /api/lectures/my
 export const getMyLectures = async (req, res, next) => {
   try {
-    const coach_id = req.user.id
     const [rows] = await pool.query(`
-      SELECT
-        l.*,
-        COALESCE(AVG(r.rating), 0) AS rating,
-        COUNT(DISTINCT r.id)        AS review_count,
-        COUNT(DISTINCT a.id)        AS enroll_count
+      SELECT l.*, COALESCE(AVG(r.rating), 0) AS rating,
+             COUNT(DISTINCT r.id) AS review_count,
+             COUNT(DISTINCT a.id) AS enroll_count
       FROM lectures l
       LEFT JOIN reviews r ON r.lecture_id = l.id
       LEFT JOIN applications a ON a.lecture_id = l.id AND a.status = 'approved'
       WHERE l.coach_id = ?
       GROUP BY l.id
       ORDER BY l.created_at DESC
-    `, [coach_id])
+    `, [req.user.id])
     res.json({ success: true, data: rows })
   } catch (err) { next(err) }
 }
@@ -72,13 +67,10 @@ export const getMyLectures = async (req, res, next) => {
 export const getLectureById = async (req, res, next) => {
   try {
     const [rows] = await pool.query(`
-      SELECT
-        l.*,
-        u.nickname AS coach_nickname,
-        u.tier     AS coach_tier,
-        COALESCE(AVG(r.rating), 0) AS rating,
-        COUNT(DISTINCT r.id)        AS review_count,
-        COUNT(DISTINCT a.id)        AS enroll_count
+      SELECT l.*, u.nickname AS coach_nickname, u.tier AS coach_tier,
+             COALESCE(AVG(r.rating), 0) AS rating,
+             COUNT(DISTINCT r.id)        AS review_count,
+             COUNT(DISTINCT a.id)        AS enroll_count
       FROM lectures l
       JOIN users u ON l.coach_id = u.id
       LEFT JOIN reviews r ON r.lecture_id = l.id
@@ -92,7 +84,7 @@ export const getLectureById = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// POST /api/lectures
+// POST /api/lectures — 강의 등록 + 팔로워 알림
 export const createLecture = async (req, res, next) => {
   try {
     const { title, description, game, price, original_price, target_tier, position, coach_type } = req.body
@@ -106,18 +98,24 @@ export const createLecture = async (req, res, next) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
       [coach_id, title, description, game, price, original_price || null, target_tier, position, coach_type]
     )
-    res.status(201).json({ success: true, data: { id: result.insertId } })
+
+    const newLectureId = result.insertId
+
+    // 팔로워들에게 알림 (비동기 — 실패해도 강의 등록은 성공)
+    const [[coach]] = await pool.query('SELECT nickname FROM users WHERE id = ?', [coach_id])
+    notifyFollowersNewLecture(coach_id, newLectureId, title, price, coach.nickname)
+      .catch(err => logger.error('[createLecture] 팔로워 알림 실패', { error: err.message }))
+
+    res.status(201).json({ success: true, data: { id: newLectureId } })
   } catch (err) { next(err) }
 }
 
 // PUT /api/lectures/:id
 export const updateLecture = async (req, res, next) => {
   try {
-    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [req.params.id])
-    if (!lectures.length)
-      return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
-    if (lectures[0].coach_id !== req.user.id)
-      return res.status(403).json({ success: false, message: '본인 강의만 수정할 수 있습니다.' })
+    const [[lecture]] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [req.params.id])
+    if (!lecture) return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
+    if (lecture.coach_id !== req.user.id) return res.status(403).json({ success: false, message: '본인 강의만 수정할 수 있습니다.' })
 
     const { title, description, price, original_price, target_tier, position, status } = req.body
     await pool.query(
@@ -131,11 +129,9 @@ export const updateLecture = async (req, res, next) => {
 // DELETE /api/lectures/:id
 export const deleteLecture = async (req, res, next) => {
   try {
-    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [req.params.id])
-    if (!lectures.length)
-      return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
-    if (lectures[0].coach_id !== req.user.id)
-      return res.status(403).json({ success: false, message: '본인 강의만 삭제할 수 있습니다.' })
+    const [[lecture]] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [req.params.id])
+    if (!lecture) return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
+    if (lecture.coach_id !== req.user.id) return res.status(403).json({ success: false, message: '본인 강의만 삭제할 수 있습니다.' })
 
     await pool.query('DELETE FROM lectures WHERE id = ?', [req.params.id])
     res.json({ success: true })

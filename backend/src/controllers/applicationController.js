@@ -1,24 +1,55 @@
 import pool from '../db/index.js'
+import { sendEnrollmentEmail } from '../utils/emailService.js'
+import { notifyEnrollment } from '../utils/discordService.js'
+import logger from '../utils/logger.js'
 
 // POST /api/applications — 결제 완료 후 자동 승인
 export const applyLecture = async (req, res, next) => {
   try {
-    const { lecture_id } = req.body
+    const { lecture_id, receipt_email } = req.body
     const student_id = req.user.id
 
     if (!lecture_id)
       return res.status(400).json({ success: false, message: '강의 ID가 누락됐습니다.' })
 
-    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [lecture_id])
-    if (!lectures.length)
+    const [[lecture]] = await pool.query(
+      'SELECT coach_id, title, price FROM lectures WHERE id = ?',
+      [lecture_id]
+    )
+    if (!lecture)
       return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
-    if (lectures[0].coach_id === student_id)
+    if (lecture.coach_id === student_id)
       return res.status(403).json({ success: false, message: '본인이 등록한 강의는 신청할 수 없습니다.' })
 
     const [result] = await pool.query(
       "INSERT INTO applications (lecture_id, student_id, status) VALUES (?, ?, 'approved')",
       [lecture_id, student_id]
     )
+
+    // 학생 정보 조회
+    const [[student]] = await pool.query(
+      'SELECT email, nickname FROM users WHERE id = ?',
+      [student_id]
+    )
+
+    // 영수증 받을 이메일: 결제 시 입력한 이메일 우선, 없으면 계정 이메일 사용
+    const targetEmail = (receipt_email && receipt_email.trim()) ? receipt_email.trim() : student.email
+
+    // 이메일 + 디스코드 알림 (비동기 — 실패해도 결제는 성공)
+    Promise.all([
+      sendEnrollmentEmail({
+        to:           targetEmail,
+        nickname:     student.nickname,
+        lectureTitle: lecture.title,
+        price:        lecture.price,
+      }),
+      notifyEnrollment({
+        studentNickname: student.nickname,
+        lectureTitle:    lecture.title,
+        price:           lecture.price,
+      }),
+    ]).catch(err => logger.error('[applyLecture] 알림 발송 실패', { error: err.message }))
+
     res.status(201).json({ success: true, data: { id: result.insertId } })
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY')
@@ -67,10 +98,10 @@ export const getLectureStudents = async (req, res, next) => {
     const coach_id   = req.user.id
     const lecture_id = req.params.lectureId
 
-    const [lectures] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [lecture_id])
-    if (!lectures.length)
+    const [[lecture]] = await pool.query('SELECT coach_id FROM lectures WHERE id = ?', [lecture_id])
+    if (!lecture)
       return res.status(404).json({ success: false, message: '강의를 찾을 수 없습니다.' })
-    if (lectures[0].coach_id !== coach_id)
+    if (lecture.coach_id !== coach_id)
       return res.status(403).json({ success: false, message: '본인 강의의 수강자만 조회할 수 있습니다.' })
 
     const [rows] = await pool.query(`
@@ -93,16 +124,14 @@ export const getLectureStudents = async (req, res, next) => {
       ) a
       JOIN users u ON a.student_id = u.id
       LEFT JOIN (
-        -- 시청 시간 기반 진도율 (getLectureProgress와 동일 방식)
-        SELECT
-          user_id,
-          COUNT(*) AS total_count,
-          SUM(completed) AS completed_count,
-          CASE
-            WHEN SUM(duration_sec) > 0
-            THEN LEAST(ROUND(SUM(LEAST(watched_sec, duration_sec)) / SUM(duration_sec) * 100), 100)
-            ELSE ROUND(SUM(completed) / NULLIF(COUNT(*), 0) * 100)
-          END AS progress_percent
+        SELECT user_id,
+               COUNT(*) AS total_count,
+               SUM(completed) AS completed_count,
+               CASE
+                 WHEN SUM(duration_sec) > 0
+                 THEN LEAST(ROUND(SUM(LEAST(watched_sec, duration_sec)) / SUM(duration_sec) * 100), 100)
+                 ELSE ROUND(SUM(completed) / NULLIF(COUNT(*), 0) * 100)
+               END AS progress_percent
         FROM content_progress
         WHERE lecture_id = ?
         GROUP BY user_id

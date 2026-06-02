@@ -1,13 +1,21 @@
+import { useNavigate, useLocation } from 'react-router-dom'
 import { GAME_LIST } from '../constants/games'
 import useLectureStore from '../store/useLectureStore'
 
 export default function GameTabs() {
   const { filter, setFilter, fetchLectures } = useLectureStore()
+  const navigate  = useNavigate()
+  const location  = useLocation()
 
   const handleClick = (value) => {
     setFilter('game', value)
     setFilter('tier', 'all')
-    setTimeout(() => fetchLectures(), 0)
+    // 강의 목록 페이지가 아니면 이동
+    if (!location.pathname.startsWith('/lectures') || location.pathname !== '/lectures') {
+      navigate('/lectures')
+    } else {
+      setTimeout(() => fetchLectures(), 0)
+    }
   }
 
   return (

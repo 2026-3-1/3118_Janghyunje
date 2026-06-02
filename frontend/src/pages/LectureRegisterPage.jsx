@@ -4,6 +4,7 @@ import api from '../services/api'
 import useAuthStore from '../store/useAuthStore'
 import { GAME_LIST, TIER_LIST } from '../constants/games'
 import { LoadingScreen } from '../components/ui'
+import { notifyNewLecture } from '../utils/notifyService'
 
 const POSITION_LIST = [
   { value: '', label: '포지션 선택 (선택사항)' },
@@ -37,14 +38,13 @@ export default function LectureRegisterPage() {
   const [loading, setLoading] = useState(isEditMode)
   const [saving, setSaving]   = useState(false)
 
-  // 강의 자료
   const [contents, setContents]               = useState([])
   const [showContentForm, setShowContentForm] = useState(false)
   const [contentForm, setContentForm]         = useState(EMPTY_CONTENT_FORM)
   const [contentFormErrors, setContentFormErrors] = useState({})
   const [contentSaving, setContentSaving]     = useState(false)
   const [editingContentId, setEditingContentId] = useState(null)
-  const [registeredLectureId, setRegisteredLectureId] = useState(null) // 신규 등록 후 생성된 ID
+  const [registeredLectureId, setRegisteredLectureId] = useState(null)
 
   const [toast, setToast] = useState('')
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2500) }
@@ -62,7 +62,6 @@ export default function LectureRegisterPage() {
     )
   }
 
-  // 수정 모드: 기존 데이터 로드
   useEffect(() => {
     if (!isEditMode) return
     Promise.all([
@@ -89,11 +88,8 @@ export default function LectureRegisterPage() {
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    if (name === 'game') {
-      setForm(prev => ({ ...prev, game: value, target_tier: 'all' }))
-    } else {
-      setForm(prev => ({ ...prev, [name]: value }))
-    }
+    if (name === 'game') setForm(prev => ({ ...prev, game: value, target_tier: 'all' }))
+    else setForm(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }))
   }
 
@@ -128,7 +124,6 @@ export default function LectureRegisterPage() {
         showToast('강의가 수정되었습니다.')
         setTimeout(() => navigate('/coach/dashboard'), 1000)
       } else {
-        // 신규 등록 — 1단계: 강의 정보 저장 후 콘텐츠 추가 단계로 이동
         const res = await api.post('/lectures', { coach_id: user.id, ...payload })
         const newId = res.data.data.id
         setRegisteredLectureId(newId)
@@ -136,21 +131,21 @@ export default function LectureRegisterPage() {
       }
     } catch (err) {
       setErrors({ general: err.response?.data?.message || (isEditMode ? '강의 수정에 실패했습니다.' : '강의 등록에 실패했습니다.') })
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }
 
-  // 콘텐츠 없이 완료 처리 방지
   const handleFinish = () => {
     if (contents.length === 0) {
       setErrors({ general: '강의 영상 또는 자료를 최소 1개 이상 추가해야 합니다.' })
       return
     }
+    // 팔로워들에게 신규 강의 알림 발송
+    if (registeredLectureId) {
+      notifyNewLecture(registeredLectureId)
+    }
     navigate('/coach/dashboard')
   }
 
-  // ── 강의 자료 추가/수정 ──
   const validateContent = () => {
     const e = {}
     if (!contentForm.title.trim()) e.title = '제목을 입력해주세요.'
@@ -174,17 +169,11 @@ export default function LectureRegisterPage() {
       }
       if (editingContentId) {
         await api.put(`/contents/${editingContentId}`, payload)
-        setContents(prev =>
-          prev.map(c => c.id === editingContentId ? { ...c, ...payload } : c)
-            .sort((a, b) => a.order_num - b.order_num)
-        )
+        setContents(prev => prev.map(c => c.id === editingContentId ? { ...c, ...payload } : c).sort((a, b) => a.order_num - b.order_num))
         showToast('자료가 수정되었습니다.')
       } else {
         const res = await api.post(`/lectures/${currentLectureId}/contents`, payload)
-        setContents(prev =>
-          [...prev, { id: res.data.data.id, ...payload }]
-            .sort((a, b) => a.order_num - b.order_num)
-        )
+        setContents(prev => [...prev, { id: res.data.data.id, ...payload }].sort((a, b) => a.order_num - b.order_num))
         showToast('강의 자료가 추가되었습니다.')
         if (errors.general) setErrors({})
       }
@@ -193,19 +182,11 @@ export default function LectureRegisterPage() {
       setEditingContentId(null)
     } catch (err) {
       showToast(err.response?.data?.message || '저장에 실패했습니다.')
-    } finally {
-      setContentSaving(false)
-    }
+    } finally { setContentSaving(false) }
   }
 
   const handleContentEdit = (c) => {
-    setContentForm({
-      title:       c.title || '',
-      description: c.description || '',
-      type:        c.type || 'video',
-      url:         c.url || '',
-      order_num:   c.order_num != null ? String(c.order_num) : '',
-    })
+    setContentForm({ title: c.title || '', description: c.description || '', type: c.type || 'video', url: c.url || '', order_num: c.order_num != null ? String(c.order_num) : '' })
     setEditingContentId(c.id)
     setContentFormErrors({})
     setShowContentForm(true)
@@ -233,35 +214,21 @@ export default function LectureRegisterPage() {
 
   if (loading) return <LoadingScreen />
 
-  // 강의 자료 추가 단계 (신규 등록 후)
   const isContentStep = !isEditMode && !!registeredLectureId
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-
-      {/* 토스트 */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-white text-white dark:text-gray-900
-                        text-sm font-medium px-5 py-3 rounded-xl shadow-lg whitespace-nowrap">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium px-5 py-3 rounded-xl shadow-lg whitespace-nowrap">
           {toast}
         </div>
       )}
 
       <div>
-        <button onClick={() => navigate('/coach/dashboard')}
-          className="text-xs text-gray-400 dark:text-[#6b7280] hover:text-brand-500 transition-colors mb-2 block">
-          ← 대시보드로
-        </button>
+        <button onClick={() => navigate('/coach/dashboard')} className="text-xs text-gray-400 hover:text-brand-500 transition-colors mb-2 block">← 대시보드로</button>
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">
           {isEditMode ? '강의 수정' : isContentStep ? '강의 자료 추가' : '강의 등록'}
         </h1>
-        <p className="text-sm text-gray-400 dark:text-[#6b7280] mt-0.5">
-          {isEditMode
-            ? '강의 정보와 자료를 수정할 수 있습니다.'
-            : isContentStep
-            ? '영상 또는 자료를 최소 1개 이상 추가해야 강의가 공개됩니다.'
-            : '강의 기본 정보를 입력해주세요.'}
-        </p>
       </div>
 
       {errors.general && (
@@ -270,102 +237,74 @@ export default function LectureRegisterPage() {
         </div>
       )}
 
-      {/* ── 강의 기본 정보 (콘텐츠 단계가 아닐 때만 표시) ── */}
       {!isContentStep && (
         <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-2xl p-6 space-y-5">
           <h2 className="text-sm font-bold text-gray-700 dark:text-white">기본 정보</h2>
-
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">강의 제목 *</label>
-            <input type="text" name="title" value={form.title} onChange={handleChange}
-              placeholder="예) 챌린저 달성까지 정글 로테이션 완벽 정리"
-              className={inputCls('title')} />
+            <input type="text" name="title" value={form.title} onChange={handleChange} placeholder="예) 챌린저 달성까지 정글 로테이션 완벽 정리" className={inputCls('title')} />
             {errors.title && <p className="text-xs text-red-500">{errors.title}</p>}
           </div>
-
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">강의 설명 *</label>
-            <textarea name="description" value={form.description} onChange={handleChange}
-              rows={4} placeholder="강의 내용, 대상, 학습 목표 등을 자세히 적어주세요."
-              className={`${inputCls('description')} resize-none`} />
+            <textarea name="description" value={form.description} onChange={handleChange} rows={4} placeholder="강의 내용, 대상, 학습 목표 등을 자세히 적어주세요." className={`${inputCls('description')} resize-none`} />
             {errors.description && <p className="text-xs text-red-500">{errors.description}</p>}
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">게임 *</label>
               <select name="game" value={form.game} onChange={handleChange} className={selectCls}>
-                {GAME_LIST.filter(g => g.value !== 'all').map(g => (
-                  <option key={g.value} value={g.value}>{g.label}</option>
-                ))}
+                {GAME_LIST.filter(g => g.value !== 'all').map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">대상 티어</label>
               <select name="target_tier" value={form.target_tier} onChange={handleChange} className={selectCls}>
-                {tierOptions.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
+                {tierOptions.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">포지션</label>
               <select name="position" value={form.position} onChange={handleChange} className={selectCls}>
-                {POSITION_LIST.map(p => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
+                {POSITION_LIST.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">코치 유형 *</label>
               <select name="coach_type" value={form.coach_type} onChange={handleChange} className={selectCls}>
-                {COACH_TYPE_LIST.map(c => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
+                {COACH_TYPE_LIST.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">수강료 (원) *</label>
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 bg-brand-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white">G</div>
-                <input type="number" name="price" value={form.price} onChange={handleChange}
-                  placeholder="25000" min={0} className={`${inputCls('price')} pl-9`} />
+                <input type="number" name="price" value={form.price} onChange={handleChange} placeholder="25000" min={0} className={`${inputCls('price')} pl-9`} />
               </div>
               {errors.price && <p className="text-xs text-red-500">{errors.price}</p>}
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">원가 (할인 전 가격, 선택)</label>
+              <label className="text-xs font-semibold text-gray-600 dark:text-[#8892a4]">원가 (선택)</label>
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center text-[9px] font-bold text-white">G</div>
-                <input type="number" name="original_price" value={form.original_price} onChange={handleChange}
-                  placeholder="30000" min={0} className={`${inputCls('original_price')} pl-9`} />
+                <input type="number" name="original_price" value={form.original_price} onChange={handleChange} placeholder="30000" min={0} className={`${inputCls('original_price')} pl-9`} />
               </div>
               {errors.original_price && <p className="text-xs text-red-500">{errors.original_price}</p>}
-              {form.original_price && form.price && Number(form.original_price) > Number(form.price) && (
-                <p className="text-xs text-orange-500 font-medium">
-                  {Math.round((1 - Number(form.price) / Number(form.original_price)) * 100)}% 할인 적용됩니다.
-                </p>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── 강의 자료 관리 (수정 모드 OR 콘텐츠 단계) ── */}
       {(isEditMode || isContentStep) && (
         <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-gray-700 dark:text-white">강의 자료</h2>
-              {isContentStep && contents.length === 0 && (
-                <p className="text-xs text-red-500 mt-0.5">* 최소 1개 이상의 영상/자료를 추가해야 합니다.</p>
-              )}
+              {isContentStep && contents.length === 0 && <p className="text-xs text-red-500 mt-0.5">* 최소 1개 이상 추가해야 합니다.</p>}
             </div>
             {!showContentForm && (
               <button onClick={() => { setShowContentForm(true); setEditingContentId(null); setContentForm(EMPTY_CONTENT_FORM); setContentFormErrors({}) }}
@@ -375,100 +314,56 @@ export default function LectureRegisterPage() {
             )}
           </div>
 
-          {/* 자료 추가/수정 폼 */}
           {showContentForm && (
             <div className="bg-gray-50 dark:bg-[#0d0f14] border border-brand-200 dark:border-brand-700/50 rounded-xl p-4 space-y-3">
-              <h3 className="text-xs font-bold text-gray-700 dark:text-white">
-                {editingContentId ? '자료 수정' : '새 자료 추가'}
-              </h3>
               <div className="flex gap-2">
-                {[
-                  { value: 'video',    label: '▶ 영상 (YouTube)' },
-                  { value: 'material', label: '📄 자료 (링크)' },
-                ].map(t => (
+                {[{ value: 'video', label: '▶ 영상 (YouTube)' }, { value: 'material', label: '📄 자료 (링크)' }].map(t => (
                   <button key={t.value} onClick={() => setContentForm(p => ({ ...p, type: t.value }))}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
-                      ${contentForm.type === t.value
-                        ? 'bg-brand-50 dark:bg-[#1e2a4a] border-brand-400 text-brand-600 dark:text-brand-400'
-                        : 'bg-white dark:bg-[#13161e] border-gray-200 dark:border-[#2a2d3e] text-gray-500 dark:text-[#8892a4]'
-                      }`}>
+                      ${contentForm.type === t.value ? 'bg-brand-50 dark:bg-[#1e2a4a] border-brand-400 text-brand-600' : 'bg-white dark:bg-[#13161e] border-gray-200 dark:border-[#2a2d3e] text-gray-500'}`}>
                     {t.label}
                   </button>
                 ))}
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-[#8892a4]">제목 *</label>
-                <input type="text" value={contentForm.title}
-                  onChange={e => { setContentForm(p => ({ ...p, title: e.target.value })); setContentFormErrors(p => ({ ...p, title: '' })) }}
-                  placeholder="예) 1강. 정글 기초 동선 이해하기"
-                  className={contentInputCls('title')} />
+                <label className="text-xs font-medium text-gray-500">제목 *</label>
+                <input type="text" value={contentForm.title} onChange={e => { setContentForm(p => ({ ...p, title: e.target.value })); setContentFormErrors(p => ({ ...p, title: '' })) }} placeholder="예) 1강. 정글 기초 동선 이해하기" className={contentInputCls('title')} />
                 {contentFormErrors.title && <p className="text-xs text-red-500">{contentFormErrors.title}</p>}
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-[#8892a4]">
-                  {contentForm.type === 'video' ? 'YouTube URL *' : '자료 URL *'}
-                </label>
-                <input type="text" value={contentForm.url}
-                  onChange={e => { setContentForm(p => ({ ...p, url: e.target.value })); setContentFormErrors(p => ({ ...p, url: '' })) }}
-                  placeholder={contentForm.type === 'video' ? 'https://www.youtube.com/watch?v=...' : 'https://docs.google.com/...'}
-                  className={contentInputCls('url')} />
+                <label className="text-xs font-medium text-gray-500">{contentForm.type === 'video' ? 'YouTube URL *' : '자료 URL *'}</label>
+                <input type="text" value={contentForm.url} onChange={e => { setContentForm(p => ({ ...p, url: e.target.value })); setContentFormErrors(p => ({ ...p, url: '' })) }} placeholder={contentForm.type === 'video' ? 'https://www.youtube.com/watch?v=...' : 'https://docs.google.com/...'} className={contentInputCls('url')} />
                 {contentFormErrors.url && <p className="text-xs text-red-500">{contentFormErrors.url}</p>}
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-[#8892a4]">설명 (선택)</label>
-                <textarea value={contentForm.description} rows={2}
-                  onChange={e => setContentForm(p => ({ ...p, description: e.target.value }))}
-                  placeholder="이 자료에 대한 간략한 설명"
-                  className={`${contentInputCls('')} resize-none`} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500 dark:text-[#8892a4]">순서 (선택, 숫자)</label>
-                <input type="number" value={contentForm.order_num} min={0}
-                  onChange={e => setContentForm(p => ({ ...p, order_num: e.target.value }))}
-                  placeholder={`기본값: ${contents.length + 1}`}
-                  className={contentInputCls('')} />
+                <label className="text-xs font-medium text-gray-500">설명 (선택)</label>
+                <textarea value={contentForm.description} rows={2} onChange={e => setContentForm(p => ({ ...p, description: e.target.value }))} className={`${contentInputCls('')} resize-none`} />
               </div>
               <div className="flex gap-2 pt-1">
-                <button onClick={handleContentSave} disabled={contentSaving}
-                  className="flex-1 py-2 bg-brand-500 hover:bg-brand-600 disabled:bg-brand-300 text-white text-xs font-semibold rounded-lg transition-colors">
+                <button onClick={handleContentSave} disabled={contentSaving} className="flex-1 py-2 bg-brand-500 hover:bg-brand-600 disabled:bg-brand-300 text-white text-xs font-semibold rounded-lg transition-colors">
                   {contentSaving ? '저장 중...' : (editingContentId ? '수정 완료' : '추가')}
                 </button>
-                <button onClick={handleContentFormCancel}
-                  className="px-4 py-2 border border-gray-200 dark:border-[#2a2d3e] text-gray-500 dark:text-[#8892a4] text-xs rounded-lg hover:border-gray-400 transition-colors">
-                  취소
-                </button>
+                <button onClick={handleContentFormCancel} className="px-4 py-2 border border-gray-200 dark:border-[#2a2d3e] text-gray-500 text-xs rounded-lg hover:border-gray-400 transition-colors">취소</button>
               </div>
             </div>
           )}
 
-          {/* 자료 목록 */}
           {contents.length === 0 ? (
-            <div className="py-8 text-center text-sm text-gray-400 dark:text-[#6b7280]">
-              아직 등록된 강의 자료가 없어요.
-            </div>
+            <div className="py-8 text-center text-sm text-gray-400">아직 등록된 강의 자료가 없어요.</div>
           ) : (
             <div className="space-y-2">
               {contents.map((c, idx) => (
-                <div key={c.id}
-                  className="flex items-center gap-3 bg-gray-50 dark:bg-[#0d0f14] border border-gray-100 dark:border-[#2a2d3e] rounded-xl px-4 py-3">
-                  <span className="text-xs font-bold text-gray-400 dark:text-[#6b7280] w-5 shrink-0 text-center">
-                    {String(idx + 1).padStart(2, '0')}
-                  </span>
-                  <div className="flex-1 min-w-0 space-y-0.5">
+                <div key={c.id} className="flex items-center gap-3 bg-gray-50 dark:bg-[#0d0f14] border border-gray-100 dark:border-[#2a2d3e] rounded-xl px-4 py-3">
+                  <span className="text-xs font-bold text-gray-400 w-5 shrink-0 text-center">{String(idx + 1).padStart(2, '0')}</span>
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0
-                        ${c.type === 'video'
-                          ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500'
-                          : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${c.type === 'video' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' : 'bg-green-50 dark:bg-green-900/20 text-green-600'}`}>
                         {c.type === 'video' ? '▶ 영상' : '📄 자료'}
                       </span>
                       <p className="text-sm font-medium text-gray-800 dark:text-slate-200 truncate">{c.title}</p>
                     </div>
                   </div>
-                  <button onClick={() => handleContentEdit(c)}
-                    className="px-3 py-1 text-xs text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-colors shrink-0 border border-brand-200 dark:border-brand-700/50">
-                    수정
-                  </button>
+                  <button onClick={() => handleContentEdit(c)} className="px-3 py-1 text-xs text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded-lg transition-colors shrink-0 border border-brand-200 dark:border-brand-700/50">수정</button>
                 </div>
               ))}
             </div>
@@ -476,26 +371,17 @@ export default function LectureRegisterPage() {
         </div>
       )}
 
-      {/* ── 하단 버튼 ── */}
       <div className="flex gap-3">
         <button onClick={() => navigate('/coach/dashboard')}
-          className="flex-1 py-3 bg-white dark:bg-[#1a1d2e] border border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300
-                     text-sm font-semibold rounded-xl hover:border-brand-400 transition-colors">
-          {isContentStep ? '나중에 추가하기' : '취소'}
+          className="flex-1 py-3 bg-white dark:bg-[#1a1d2e] border border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300 text-sm font-semibold rounded-xl hover:border-brand-400 transition-colors">
+          취소
         </button>
-
         {isContentStep ? (
-          // 콘텐츠 단계: 등록 완료 버튼
-          <button onClick={handleFinish}
-            disabled={contents.length === 0}
-            className={`flex-1 py-3 text-white text-sm font-semibold rounded-xl transition-colors
-              ${contents.length === 0
-                ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed'
-                : 'bg-brand-500 hover:bg-brand-600'}`}>
+          <button onClick={handleFinish} disabled={contents.length === 0}
+            className={`flex-1 py-3 text-white text-sm font-semibold rounded-xl transition-colors ${contents.length === 0 ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed' : 'bg-brand-500 hover:bg-brand-600'}`}>
             {contents.length === 0 ? '자료를 추가해주세요' : `등록 완료 (자료 ${contents.length}개)`}
           </button>
         ) : (
-          // 기본 정보 단계 OR 수정 모드
           <button onClick={handleSubmit} disabled={saving}
             className="flex-1 py-3 bg-brand-500 hover:bg-brand-600 disabled:bg-brand-300 text-white text-sm font-semibold rounded-xl transition-colors">
             {saving ? '저장 중...' : (isEditMode ? '수정 완료' : '다음 단계 →')}

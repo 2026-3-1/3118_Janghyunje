@@ -8,15 +8,18 @@ import { getContents, getContentById, createContent, updateContent, deleteConten
 import { getCart, addToCart, removeFromCart, clearCart } from '../controllers/cartController.js'
 import { saveProgress, getLectureProgress, getContentProgress } from '../controllers/progressController.js'
 import { getMyReports, getReportById, getCoachReports, createReport, updateReport, deleteReport } from '../controllers/growthController.js'
+import { getStats, getUsers, getUserDetail, deactivateUser, activateUser, getAdminLectures, updateLectureStatus, deleteAdminLecture, getAdminReviews, deleteAdminReview } from '../controllers/adminController.js'
+import { getQnAPosts, createQnAPost, getQnAPostById, updateQnAPost, deleteQnAPost, createQnAComment, solveQnA, deleteQnAComment } from '../controllers/qnaController.js'
+import { getFollowStatus, followCoach, unfollowCoach, getFollowers, getFollowingCoaches } from '../controllers/followController.js'
+import { getQnANotifyInfo, getGrowthNotifyInfo, getLectureFollowerNotifyInfo } from '../controllers/notifyController.js'
 import { authenticate, authorize } from '../middleware/errorHandler.js'
+import { validateSignup, validateLogin, validateLecture, validateReview, validatePost, validateQnA } from '../middleware/validators.js'
 
 const router = Router()
 
 // ── 인증 ─────────────────────────────────────────────────────────────
-router.post('/signup', signup)
-router.post('/login',  login)
-
-// ── 유저 ─────────────────────────────────────────────────────────────
+router.post('/signup', validateSignup, signup)
+router.post('/login',  validateLogin,  login)
 router.get('/users/:id',  authenticate, getUserById)
 router.put('/users/:id',  authenticate, updateUser)
 
@@ -24,8 +27,8 @@ router.put('/users/:id',  authenticate, updateUser)
 router.get('/lectures/my',     authenticate, authorize('coach'), getMyLectures)
 router.get('/lectures',        getLectures)
 router.get('/lectures/:id',    getLectureById)
-router.post('/lectures',       authenticate, authorize('coach'), createLecture)
-router.put('/lectures/:id',    authenticate, authorize('coach'), updateLecture)
+router.post('/lectures',       authenticate, authorize('coach'), validateLecture, createLecture)
+router.put('/lectures/:id',    authenticate, authorize('coach'), validateLecture, updateLecture)
 router.delete('/lectures/:id', authenticate, authorize('coach'), deleteLecture)
 
 // ── 수강 신청 ─────────────────────────────────────────────────────────
@@ -33,11 +36,10 @@ router.post('/applications',                   authenticate, authorize('student'
 router.get('/applications/student',            authenticate, authorize('student'), getStudentApplications)
 router.get('/applications/coach',              authenticate, authorize('coach'),   getCoachApplications)
 router.get('/applications/lecture/:lectureId', authenticate, authorize('coach'),   getLectureStudents)
-// 승인/거절 제거 — 결제 완료 시 자동 승인
 
 // ── 리뷰 ─────────────────────────────────────────────────────────────
 router.get('/reviews/:lectureId', getReviews)
-router.post('/reviews',           authenticate, authorize('student'), createReview)
+router.post('/reviews',           authenticate, authorize('student'), validateReview, createReview)
 
 // ── 장바구니 ─────────────────────────────────────────────────────────
 router.get('/cart',               authenticate, getCart)
@@ -68,10 +70,44 @@ router.get('/contents/:id/comments',         authenticate, getComments)
 router.post('/contents/:id/comments',        authenticate, createComment)
 router.delete('/comments/:id',               authenticate, deleteComment)
 
+// ── Q&A ──────────────────────────────────────────────────────────────
+router.get('/lectures/:lectureId/qna',        authenticate, getQnAPosts)
+router.post('/lectures/:lectureId/qna',       authenticate, validateQnA, createQnAPost)
+router.get('/qna/:id',                        authenticate, getQnAPostById)
+router.put('/qna/:id',                        authenticate, updateQnAPost)
+router.delete('/qna/:id',                     authenticate, deleteQnAPost)
+router.post('/qna/:id/comments',              authenticate, createQnAComment)
+router.put('/qna/:postId/solve/:commentId',   authenticate, authorize('coach'), solveQnA)
+router.delete('/qna-comments/:id',            authenticate, deleteQnAComment)
+
+// ── 팔로우 ────────────────────────────────────────────────────────────
+router.get('/coaches/:coachId/follow',     authenticate, getFollowStatus)
+router.post('/coaches/:coachId/follow',    authenticate, authorize('student'), followCoach)
+router.delete('/coaches/:coachId/follow',  authenticate, authorize('student'), unfollowCoach)
+router.get('/coaches/:coachId/followers',  authenticate, getFollowers)
+router.get('/follows/coaches',             authenticate, authorize('student'), getFollowingCoaches)
+
+// ── 알림 정보 조회 (프론트에서 EmailJS 발송용) ────────────────────────
+router.get('/notify/qna/:postId',              authenticate, getQnANotifyInfo)
+router.get('/notify/growth/:reportId',         authenticate, getGrowthNotifyInfo)
+router.get('/notify/lecture/:lectureId/followers', authenticate, getLectureFollowerNotifyInfo)
+
+// ── 관리자 ───────────────────────────────────────────────────────────
+router.get('/admin/stats',                    authenticate, authorize('admin'), getStats)
+router.get('/admin/users',                    authenticate, authorize('admin'), getUsers)
+router.get('/admin/users/:id',                authenticate, authorize('admin'), getUserDetail)
+router.put('/admin/users/:id/deactivate',     authenticate, authorize('admin'), deactivateUser)
+router.put('/admin/users/:id/activate',       authenticate, authorize('admin'), activateUser)
+router.get('/admin/lectures',                 authenticate, authorize('admin'), getAdminLectures)
+router.put('/admin/lectures/:id/status',      authenticate, authorize('admin'), updateLectureStatus)
+router.delete('/admin/lectures/:id',          authenticate, authorize('admin'), deleteAdminLecture)
+router.get('/admin/reviews',                  authenticate, authorize('admin'), getAdminReviews)
+router.delete('/admin/reviews/:id',           authenticate, authorize('admin'), deleteAdminReview)
+
 // ── 커뮤니티 ─────────────────────────────────────────────────────────
 router.get('/posts',                getPosts)
 router.get('/posts/:id',            getPostById)
-router.post('/posts',               authenticate, createPost)
+router.post('/posts',               authenticate, validatePost, createPost)
 router.put('/posts/:id',            authenticate, updatePost)
 router.delete('/posts/:id',         authenticate, deletePost)
 router.post('/posts/:id/comments',  authenticate, createPostComment)

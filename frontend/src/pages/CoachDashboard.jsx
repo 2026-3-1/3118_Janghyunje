@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import useAuthStore from '../store/useAuthStore'
 import { TierBadge, LoadingScreen, EmptyState } from '../components/ui'
+import { notifyGrowthReport } from '../utils/notifyService'
 
 const LECTURE_STATUS = {
   active:   { label: '모집 중', cls: 'bg-green-50 dark:bg-green-900/20 text-green-600 border-green-200' },
@@ -15,23 +16,17 @@ export default function CoachDashboard() {
   const { user } = useAuthStore()
 
   const [mainTab, setMainTab] = useState('students')
-
-  // 내 강의 목록
   const [lectures, setLectures]               = useState([])
   const [lecturesLoading, setLecturesLoading] = useState(false)
   const [lecturesFetched, setLecturesFetched] = useState(false)
-
-  // 수강자 목록
   const [selectedLecture, setSelectedLecture] = useState(null)
   const [students, setStudents]               = useState([])
   const [studentsLoading, setStudentsLoading] = useState(false)
-
-  // 성장 분석 모달
   const [growthModal, setGrowthModal]           = useState(null)
   const [growthForm, setGrowthForm]             = useState({ title: '', content: '' })
   const [growthSubmitting, setGrowthSubmitting] = useState(false)
-
   const [toast, setToast] = useState({ msg: '', type: '' })
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast({ msg: '', type: '' }), 3000)
@@ -71,7 +66,7 @@ export default function CoachDashboard() {
     }
     setGrowthSubmitting(true)
     try {
-      await api.post('/growth/reports', {
+      const res = await api.post('/growth/reports', {
         lecture_id: growthModal.lecture_id,
         student_id: growthModal.student_id,
         title:      growthForm.title,
@@ -81,6 +76,12 @@ export default function CoachDashboard() {
       setGrowthModal(null)
       setGrowthForm({ title: '', content: '' })
       if (selectedLecture) fetchStudents(selectedLecture)
+
+      // 학생에게 이메일 알림 발송
+      const reportId = res.data.data?.id
+      if (reportId) {
+        notifyGrowthReport(reportId)
+      }
     } catch (err) {
       showToast(err.response?.data?.message || '작성에 실패했습니다.', 'error')
     } finally { setGrowthSubmitting(false) }
@@ -93,15 +94,12 @@ export default function CoachDashboard() {
 
   return (
     <div className="max-w-4xl px-4 py-10 mx-auto space-y-6">
-
-      {/* 토스트 */}
       {toast.msg && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl border shadow-lg text-sm font-medium whitespace-nowrap ${toastCls[toast.type]}`}>
           {toast.type === 'success' ? '✓ ' : '⚠️ '}{toast.msg}
         </div>
       )}
 
-      {/* 성장 분석 작성 모달 */}
       {growthModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
           <div className="bg-white dark:bg-[#13161e] rounded-2xl p-6 w-full max-w-lg space-y-4 shadow-2xl">
@@ -117,8 +115,7 @@ export default function CoachDashboard() {
               <input value={growthForm.title}
                 onChange={e => setGrowthForm(p => ({ ...p, title: e.target.value }))}
                 placeholder="예: 2주차 피드백 — 포지셔닝 개선 중점"
-                className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm
-                           text-gray-800 dark:text-slate-200 outline-none focus:border-brand-400 transition-colors" />
+                className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm text-gray-800 dark:text-slate-200 outline-none focus:border-brand-400 transition-colors" />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-gray-500 dark:text-[#8892a4]">분석 내용</label>
@@ -126,8 +123,7 @@ export default function CoachDashboard() {
                 onChange={e => setGrowthForm(p => ({ ...p, content: e.target.value }))}
                 placeholder="수강자의 강점, 개선점, 다음 목표 등을 자유롭게 작성하세요."
                 rows={6}
-                className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm
-                           text-gray-800 dark:text-slate-200 outline-none focus:border-brand-400 resize-none transition-colors" />
+                className="w-full bg-gray-50 dark:bg-[#0d0f14] border border-gray-200 dark:border-[#2a2d3e] rounded-lg px-3 py-2.5 text-sm text-gray-800 dark:text-slate-200 outline-none focus:border-brand-400 resize-none transition-colors" />
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <button onClick={() => setGrowthModal(null)}
@@ -143,7 +139,6 @@ export default function CoachDashboard() {
         </div>
       )}
 
-      {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">코치 대시보드</h1>
@@ -155,23 +150,16 @@ export default function CoachDashboard() {
         </button>
       </div>
 
-      {/* 메인 탭 */}
       <div className="flex gap-1 p-1 bg-gray-100 dark:bg-[#1a1d2e] rounded-xl w-fit">
-        {[
-          { key: 'students', label: '수강자 목록' },
-          { key: 'lectures', label: '내 강의 목록' },
-        ].map(tab => (
+        {[{ key: 'students', label: '수강자 목록' }, { key: 'lectures', label: '내 강의 목록' }].map(tab => (
           <button key={tab.key} onClick={() => setMainTab(tab.key)}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors
-              ${mainTab === tab.key
-                ? 'bg-white dark:bg-[#13161e] text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-[#6b7280] hover:text-gray-700 dark:hover:text-white'}`}>
+              ${mainTab === tab.key ? 'bg-white dark:bg-[#13161e] text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-[#6b7280] hover:text-gray-700 dark:hover:text-white'}`}>
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* ── 수강자 목록 ── */}
       {mainTab === 'students' && (
         <div className="space-y-4">
           {!selectedLecture ? (
@@ -192,8 +180,7 @@ export default function CoachDashboard() {
           ) : (
             <>
               <div className="flex items-center gap-3">
-                <button onClick={() => setSelectedLecture(null)}
-                  className="text-sm text-gray-400 hover:text-brand-500 transition-colors">← 강의 목록</button>
+                <button onClick={() => setSelectedLecture(null)} className="text-sm text-gray-400 hover:text-brand-500 transition-colors">← 강의 목록</button>
                 <h2 className="text-base font-bold text-gray-900 dark:text-white">{selectedLecture.title}</h2>
                 <span className="text-xs text-gray-400 dark:text-[#6b7280]">{students.length}명 수강 중</span>
               </div>
@@ -202,8 +189,7 @@ export default function CoachDashboard() {
               ) : (
                 <div className="space-y-3">
                   {students.map(s => (
-                    <div key={s.student_id}
-                      className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4">
+                    <div key={s.student_id} className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-2 flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -216,39 +202,25 @@ export default function CoachDashboard() {
                             </div>
                             <TierBadge tier={s.student_tier} tierName={s.student_tier} />
                           </div>
-
-                          {/* 진도율 */}
                           <div className="space-y-1">
                             <div className="flex justify-between text-xs text-gray-400">
                               <span>진도율</span>
                               <span>{s.completed_count}/{s.total_count} ({s.progress_percent}%)</span>
                             </div>
                             <div className="h-2 bg-gray-100 dark:bg-[#1a1d2e] rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all
-                                ${s.progress_percent >= 80 ? 'bg-green-500' : s.progress_percent >= 60 ? 'bg-brand-500' : 'bg-amber-400'}`}
+                              <div className={`h-full rounded-full transition-all ${s.progress_percent >= 80 ? 'bg-green-500' : s.progress_percent >= 60 ? 'bg-brand-500' : 'bg-amber-400'}`}
                                 style={{ width: `${s.progress_percent}%` }} />
                             </div>
                           </div>
-
                           <div className="flex items-center gap-3 text-xs">
-                            {s.has_review
-                              ? <span className="text-green-500">⭐ 리뷰 ({s.review_rating}점)</span>
-                              : <span className="text-gray-300 dark:text-[#4a5568]">리뷰 미작성</span>}
-                            {s.has_growth_report
-                              ? <span className="text-brand-400">📊 성장 분석 작성됨</span>
-                              : <span className="text-gray-300 dark:text-[#4a5568]">성장 분석 미작성</span>}
+                            {s.has_review ? <span className="text-green-500">⭐ 리뷰 ({s.review_rating}점)</span> : <span className="text-gray-300 dark:text-[#4a5568]">리뷰 미작성</span>}
+                            {s.has_growth_report ? <span className="text-brand-400">📊 성장 분석 작성됨</span> : <span className="text-gray-300 dark:text-[#4a5568]">성장 분석 미작성</span>}
                           </div>
                         </div>
-
                         <button
-                          onClick={() => {
-                            setGrowthModal({ student_id: s.student_id, student_nickname: s.student_nickname, lecture_id: selectedLecture.id })
-                            setGrowthForm({ title: '', content: '' })
-                          }}
+                          onClick={() => { setGrowthModal({ student_id: s.student_id, student_nickname: s.student_nickname, lecture_id: selectedLecture.id }); setGrowthForm({ title: '', content: '' }) }}
                           className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors
-                            ${s.has_growth_report
-                              ? 'bg-gray-50 dark:bg-[#1a1d2e] text-gray-500 border-gray-200 hover:bg-brand-50 hover:text-brand-500'
-                              : 'bg-brand-50 dark:bg-[#1e2a4a] text-brand-500 border-brand-200 hover:bg-brand-500 hover:text-white'}`}>
+                            ${s.has_growth_report ? 'bg-gray-50 dark:bg-[#1a1d2e] text-gray-500 border-gray-200 hover:bg-brand-50 hover:text-brand-500' : 'bg-brand-50 dark:bg-[#1e2a4a] text-brand-500 border-brand-200 hover:bg-brand-500 hover:text-white'}`}>
                           {s.has_growth_report ? '분석 재작성' : '📊 분석 작성'}
                         </button>
                       </div>
@@ -261,7 +233,6 @@ export default function CoachDashboard() {
         </div>
       )}
 
-      {/* ── 내 강의 목록 ── */}
       {mainTab === 'lectures' && (
         <>
           {lecturesLoading ? <LoadingScreen /> : lectures.length === 0 ? (
@@ -269,8 +240,7 @@ export default function CoachDashboard() {
           ) : (
             <div className="space-y-3">
               {lectures.map(lec => (
-                <div key={lec.id}
-                  className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4">
+                <div key={lec.id} className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1.5 flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

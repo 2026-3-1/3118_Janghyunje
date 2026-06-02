@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getLectureById, getReviewsByLectureId } from '../services/lectureService'
 import { TierBadge, GameBadge, StarRating, CardBadge, LoadingScreen } from '../components/ui'
+import FollowButton from '../components/FollowButton'
 import useAuthStore from '../store/useAuthStore'
 import api from '../services/api'
-
-const APPLICATION_STATUS = {
-  approved: { label: '수강 중', cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-700 cursor-default' },
-}
 
 function StarPicker({ value, onChange }) {
   const [hovered, setHovered] = useState(0)
@@ -41,14 +38,12 @@ export default function LectureDetailPage() {
   const [loading, setLoading]                     = useState(true)
   const [applicationStatus, setApplicationStatus] = useState(null)
   const [toast, setToast]                         = useState({ msg: '', type: '' })
-
-  const [inCart, setInCart]         = useState(false)
-  const [addingCart, setAddingCart] = useState(false)
-
-  const [reviewRating, setReviewRating]         = useState(0)
-  const [reviewComment, setReviewComment]       = useState('')
-  const [submittingReview, setSubmittingReview] = useState(false)
-  const [alreadyReviewed, setAlreadyReviewed]   = useState(false)
+  const [inCart, setInCart]                       = useState(false)
+  const [addingCart, setAddingCart]               = useState(false)
+  const [reviewRating, setReviewRating]           = useState(0)
+  const [reviewComment, setReviewComment]         = useState('')
+  const [submittingReview, setSubmittingReview]   = useState(false)
+  const [alreadyReviewed, setAlreadyReviewed]     = useState(false)
 
   const showToast = (msg, type = 'error') => {
     setToast({ msg, type })
@@ -176,17 +171,21 @@ export default function LectureDetailPage() {
         <p className="text-gray-600 dark:text-slate-300 text-sm leading-relaxed">{lecture.description}</p>
       </div>
 
-      {/* 코치 정보 */}
+      {/* 코치 정보 + 팔로우 버튼 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5">
         <h2 className="text-sm font-bold text-gray-700 dark:text-white mb-3">코치 정보</h2>
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-full bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center text-lg font-bold text-brand-500 dark:text-brand-400 shrink-0">
-            {lecture.coach.nickname[0]}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-brand-100 dark:bg-brand-900/40 flex items-center justify-center text-lg font-bold text-brand-500 dark:text-brand-400 shrink-0">
+              {lecture.coach.nickname[0]}
+            </div>
+            <div>
+              <p className="text-gray-900 dark:text-white font-semibold text-sm">{lecture.coach.nickname}</p>
+              <TierBadge tier={lecture.coach.tier} tierName={lecture.coach.tierName} />
+            </div>
           </div>
-          <div>
-            <p className="text-gray-900 dark:text-white font-semibold text-sm">{lecture.coach.nickname}</p>
-            <TierBadge tier={lecture.coach.tier} tierName={lecture.coach.tierName} />
-          </div>
+          {/* 팔로우 버튼 — 학생이고 본인 강의 아닐 때만 표시 */}
+          <FollowButton coachId={lecture.coach_id} />
         </div>
       </div>
 
@@ -207,8 +206,6 @@ export default function LectureDetailPage() {
         </div>
 
         <div className="flex flex-col gap-2.5">
-
-          {/* ── 코치 본인 강의 — 미리보기 + 수정 버튼 ── */}
           {isMyLecture && (
             <div className="space-y-2">
               <button onClick={() => navigate(`/lectures/${id}/contents`)}
@@ -226,7 +223,6 @@ export default function LectureDetailPage() {
             </div>
           )}
 
-          {/* ── 수강 중 (학생) ── */}
           {!isMyLecture && applicationStatus === 'approved' && (
             <button onClick={() => navigate(`/lectures/${id}/contents`)}
               className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold text-base rounded-xl transition-colors">
@@ -234,7 +230,6 @@ export default function LectureDetailPage() {
             </button>
           )}
 
-          {/* ── 미신청 (학생) ── */}
           {!isMyLecture && !applicationStatus && (
             <>
               <button
@@ -242,18 +237,15 @@ export default function LectureDetailPage() {
                   if (!user) { showToast('로그인 후 수강 신청이 가능합니다.'); return }
                   navigate('/checkout', { state: { lecture } })
                 }}
-                className="w-full py-3.5 rounded-xl font-extrabold text-base transition-colors
-                           bg-brand-500 hover:bg-brand-600 text-white shadow-lg shadow-brand-500/25">
+                className="w-full py-3.5 rounded-xl font-extrabold text-base transition-colors bg-brand-500 hover:bg-brand-600 text-white shadow-lg shadow-brand-500/25">
                 {!user ? '🔒 로그인 후 신청' : '💳 바로 결제하기'}
               </button>
 
               {user && (
                 <button onClick={handleCartToggle} disabled={addingCart}
                   className={`w-full py-3 rounded-xl font-bold text-sm border-2 transition-colors
-                    ${addingCart
-                      ? 'opacity-50 cursor-wait border-gray-200 dark:border-[#2a2d3e] text-gray-400'
-                      : inCart
-                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100'
+                    ${addingCart ? 'opacity-50 cursor-wait border-gray-200 dark:border-[#2a2d3e] text-gray-400'
+                      : inCart ? 'border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100'
                       : 'border-gray-200 dark:border-[#2a2d3e] bg-white dark:bg-[#1a1d2e] text-gray-700 dark:text-slate-300 hover:border-brand-400 hover:text-brand-500'}`}>
                   {addingCart ? '...' : inCart ? '🛒 장바구니에 담김 ✓' : '🛒 장바구니에 담기'}
                 </button>

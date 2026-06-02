@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: gcp-backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: gcp-mysql
+    environment:
+      MYSQL_DATABASE:      game_coaching_platform
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./backend/src/db/migration_community.sql:/docker-entrypoint-initdb.d/02_community.sql
+      - ./backend/src/db/migration_contents.sql:/docker-entrypoint-initdb.d/03_contents.sql
+      - ./backend/src/db/migration_p2.sql:/docker-entrypoint-initdb.d/04_p2.sql
+      - ./backend/src/db/migration_p3.sql:/docker-entrypoint-initdb.d/05_p3.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
