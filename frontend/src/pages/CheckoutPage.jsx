@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/useAuthStore'
 
 const TOSS_CLIENT_KEY = import.meta.env.VITE_TOSS_CLIENT_KEY
+const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin
 
 const GAME_LABEL = {
   lol: 'LoL', valorant: '발로란트', overwatch2: '오버워치2',
@@ -58,8 +59,8 @@ export default function CheckoutPage() {
       const orderId   = `order-${Date.now()}-${user.id}`
       const orderName = lecture.title.length > 30 ? lecture.title.slice(0, 30) + '...' : lecture.title
 
-      const successUrl = `${window.location.origin}/checkout/success?lectureId=${lecture.id}&amount=${lecture.price}&email=${encodeURIComponent(receiptEmail)}`
-      const failUrl    = `${window.location.origin}/checkout/fail`
+      const successUrl = `${APP_URL}/checkout/success?lectureId=${lecture.id}&amount=${lecture.price}&email=${encodeURIComponent(receiptEmail)}`
+      const failUrl    = `${APP_URL}/checkout/fail`
 
       await tossPayments.requestPayment('카드', {
         amount:        Number(lecture.price),
@@ -84,7 +85,6 @@ export default function CheckoutPage() {
         {fromCart && <span className="ml-auto text-xs text-gray-400">{queue.length + 1}개 중 1번째</span>}
       </div>
 
-      {/* 강의 정보 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5">
         <p className="text-xs text-gray-400 mb-3 font-medium">수강 신청 강의</p>
         <div className="flex items-start gap-4">
@@ -105,7 +105,6 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* 영수증 이메일 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-3">
         <div className="flex items-center gap-2">
           <span className="text-lg">📧</span>
@@ -118,7 +117,6 @@ export default function CheckoutPage() {
         <p className="text-xs text-gray-400">결제 완료 후 입력하신 이메일로 수강 확인 메일이 발송됩니다.</p>
       </div>
 
-      {/* 결제 금액 */}
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-3">
         <p className="text-sm font-bold text-gray-800 dark:text-white">결제 금액</p>
         <div className="space-y-2 text-sm">
