@@ -1,6 +1,5 @@
 import pool from '../db/index.js'
 import { sendGrowthReportEmail } from '../utils/emailService.js'
-import { notifyGrowthReport }   from '../utils/discordService.js'
 import logger from '../utils/logger.js'
 
 export const getMyReports = async (req, res, next) => {
@@ -81,7 +80,6 @@ export const createReport = async (req, res, next) => {
     if (!app)
       return res.status(403).json({ success: false, message: '수강이 승인된 학생에게만 작성할 수 있습니다.' })
 
-    // 기존 있으면 UPDATE, 없으면 INSERT
     const [[existing]] = await pool.query(
       'SELECT id FROM growth_reports WHERE lecture_id = ? AND student_id = ?',
       [lecture_id, student_id]
@@ -102,25 +100,23 @@ export const createReport = async (req, res, next) => {
       reportId = result.insertId
     }
 
-    // 학생에게 이메일 + 디스코드 알림 (비동기)
-    Promise.all([
-      (async () => {
-        const [[student]] = await pool.query('SELECT email, nickname FROM users WHERE id = ?', [student_id])
-        const [[coach]]   = await pool.query('SELECT nickname FROM users WHERE id = ?', [coach_id])
-        sendGrowthReportEmail({
-          to:           student.email,
-          nickname:     student.nickname,
-          lectureTitle: lecture.lecture_title,
-          reportTitle:  title,
-        }).catch(err => logger.error('[createReport] 이메일 실패', { error: err.message }))
-        notifyGrowthReport({
-          coachNickname:   coach.nickname,
-          studentNickname: student.nickname,
-          lectureTitle:    lecture.lecture_title,
-          reportTitle:     title,
-        }).catch(() => {})
-      })(),
-    ]).catch(() => {})
+    // 학생에게 이메일 알림 (비동기)
+    ;(async () => {
+      try {
+        const [[student]] = await pool.query('SELECT email, notification_email FROM users WHERE id = ?', [student_id])
+        const targetEmail = student.notification_email || student.email
+        if (targetEmail) {
+          await sendGrowthReportEmail({
+            to:           targetEmail,
+            nickname:     '',
+            lectureTitle: lecture.lecture_title,
+            reportTitle:  title,
+          })
+        }
+      } catch (err) {
+        logger.error('[createReport] 이메일 실패', { error: err.message })
+      }
+    })()
 
     res.status(201).json({ success: true, data: { id: reportId } })
   } catch (err) { next(err) }
