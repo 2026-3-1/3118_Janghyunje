@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import Navbar from './components/layout/Navbar'
 import Footer from './components/layout/Footer'
@@ -37,6 +37,13 @@ function PageLoader() {
   )
 }
 
+// 홈, 강의 목록 페이지에서만 GameTabs 표시
+function ConditionalGameTabs() {
+  const location = useLocation()
+  const show = location.pathname === '/' || location.pathname === '/lectures'
+  return show ? <GameTabs /> : null
+}
+
 function PrivateRoute({ children }) {
   const { user } = useAuthStore()
   return user ? children : <Navigate to="/login" replace />
@@ -55,7 +62,7 @@ export default function App() {
     <BrowserRouter>
       <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-[#0d0f14] text-gray-900 dark:text-slate-100">
         <Navbar />
-        <GameTabs />
+        <ConditionalGameTabs />
         <main className="flex-1">
           <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -68,7 +75,7 @@ export default function App() {
               <Route path="/community"     element={<CommunityPage />} />
               <Route path="/community/:id" element={<CommunityDetailPage />} />
 
-              {/* 결제 성공/실패 — 토스 리다이렉트용 (PrivateRoute 밖에 있어야 함) */}
+              {/* 결제 */}
               <Route path="/checkout/success" element={<PrivateRoute><CheckoutSuccessPage /></PrivateRoute>} />
               <Route path="/checkout/fail"    element={<CheckoutFailPage />} />
 
