@@ -3,7 +3,10 @@ import axios from 'axios'
 const api = axios.create({
   baseURL: '/api',
   timeout: 10000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',  // ngrok 경고 페이지 우회
+  },
 })
 
 api.interceptors.request.use((config) => {
@@ -15,7 +18,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    // 401이어도 로그인/회원가입 페이지면 리다이렉트 안 함
     if (err.response?.status === 401) {
       const path = window.location.pathname
       const isAuthPage = path === '/login' || path === '/register'
