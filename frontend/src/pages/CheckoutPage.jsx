@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/useAuthStore'
+import api from '../services/api'
+import { sendEnrollmentEmail } from '../utils/emailService'
 
 const TOSS_CLIENT_KEY = import.meta.env.VITE_TOSS_CLIENT_KEY
-const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin
 
 const GAME_LABEL = {
   lol: 'LoL', valorant: '발로란트', overwatch2: '오버워치2',
@@ -29,6 +30,7 @@ export default function CheckoutPage() {
   const { lecture, queue = [], fromCart = false } = location.state || {}
 
   const [loading, setLoading]   = useState(false)
+  const [done, setDone]         = useState(false)
   const [error, setError]       = useState('')
   const [receiptEmail, setReceiptEmail] = useState('')
 
@@ -37,13 +39,44 @@ export default function CheckoutPage() {
     if (!lecture) { navigate(-1);      return }
     setReceiptEmail(user.email || '')
     setError('')
+
+    // 토스 결제 완료 후 돌아온 경우 처리
+    const params    = new URLSearchParams(window.location.search)
+    const lectureId = params.get('lectureId')
+    const amount    = params.get('amount')
+    const email     = params.get('email') || ''
+
+    if (lectureId) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setReceiptEmail(decodeURIComponent(email))
+      handlePaymentComplete(Number(lectureId), decodeURIComponent(email), Number(amount))
+    }
   }, [])
 
-  if (!lecture) return null
-
-  const discountRate = lecture.originalPrice
-    ? Math.round((1 - lecture.price / lecture.originalPrice) * 100)
-    : null
+  const handlePaymentComplete = async (lectureId, email, amount) => {
+    setLoading(true)
+    try {
+      await api.post('/applications', { lecture_id: lectureId })
+      try { await api.delete(`/cart/${lectureId}`) } catch {}
+      if (email) {
+        sendEnrollmentEmail({
+          toEmail:      email,
+          nickname:     user?.nickname || '',
+          lectureTitle: lecture?.title || '',
+          price:        amount,
+        })
+      }
+      setDone(true)
+    } catch (err) {
+      if (err.response?.status === 409) {
+        setDone(true)
+      } else {
+        setError(err.response?.data?.message || '처리 중 오류가 발생했습니다.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handlePay = async () => {
     if (receiptEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptEmail)) {
@@ -59,8 +92,10 @@ export default function CheckoutPage() {
       const orderId   = `order-${Date.now()}-${user.id}`
       const orderName = lecture.title.length > 30 ? lecture.title.slice(0, 30) + '...' : lecture.title
 
-      const successUrl = `${APP_URL}/checkout/success?lectureId=${lecture.id}&amount=${lecture.price}&email=${encodeURIComponent(receiptEmail)}`
-      const failUrl    = `${APP_URL}/checkout/fail`
+      // successUrl: 현재 페이지로 돌아오도록 설정 (lectureId, email 포함)
+      const currentUrl = window.location.origin + window.location.pathname
+      const successUrl = `${currentUrl}?lectureId=${lecture.id}&amount=${lecture.price}&email=${encodeURIComponent(receiptEmail)}&orderId=${orderId}&paymentKey=done`
+      const failUrl    = `${currentUrl}?fail=true`
 
       await tossPayments.requestPayment('카드', {
         amount:        Number(lecture.price),
@@ -77,10 +112,67 @@ export default function CheckoutPage() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-500">결제 처리 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (done) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-6">
+        <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center text-4xl mx-auto">✓</div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">결제 완료!</h1>
+          <p className="text-gray-500 dark:text-[#8892a4] text-sm">
+            수강 신청이 완료됐습니다.<br />지금 바로 강의를 수강할 수 있어요.
+          </p>
+        </div>
+        {receiptEmail && (
+          <p className="text-xs text-green-500">📧 {receiptEmail} 로 확인 메일을 발송했습니다.</p>
+        )}
+        <div className="flex gap-3">
+          <button onClick={() => navigate('/mypage')}
+            className="flex-1 py-3 bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm rounded-xl transition-colors">
+            내 수강 목록
+          </button>
+          <button onClick={() => navigate('/lectures')}
+            className="flex-1 py-3 bg-gray-100 dark:bg-[#1a1d2e] text-gray-600 dark:text-slate-300 font-bold text-sm rounded-xl transition-colors">
+            강의 둘러보기
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!lecture) return null
+
+  const discountRate = lecture.originalPrice
+    ? Math.round((1 - lecture.price / lecture.originalPrice) * 100)
+    : null
+
+  // 결제 실패
+  if (new URLSearchParams(window.location.search).get('fail')) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center space-y-6">
+        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center text-4xl mx-auto">✕</div>
+        <h1 className="text-2xl font-extrabold">결제 실패</h1>
+        <p className="text-gray-500 text-sm">결제가 취소되었거나 오류가 발생했습니다.</p>
+        <button onClick={() => navigate(-1)}
+          className="w-full py-3 bg-brand-500 text-white font-bold rounded-xl">돌아가기</button>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="text-sm text-gray-400 hover:text-brand-500 transition-colors">← 뒤로</button>
+        <button onClick={() => navigate(-1)} className="text-sm text-gray-400 hover:text-brand-500">← 뒤로</button>
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">결제하기</h1>
         {fromCart && <span className="ml-auto text-xs text-gray-400">{queue.length + 1}개 중 1번째</span>}
       </div>
@@ -120,7 +212,7 @@ export default function CheckoutPage() {
       <div className="bg-white dark:bg-[#13161e] border border-gray-100 dark:border-[#1e2235] rounded-xl p-5 space-y-3">
         <p className="text-sm font-bold text-gray-800 dark:text-white">결제 금액</p>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between text-gray-500 dark:text-[#8892a4]">
+          <div className="flex justify-between text-gray-500">
             <span>강의 정가</span>
             <span>{Number(lecture.originalPrice || lecture.price).toLocaleString()}원</span>
           </div>
@@ -137,13 +229,13 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 rounded-xl p-4">
-        <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">💳 토스페이먼츠 결제</p>
-        <p className="text-xs text-blue-500 dark:text-blue-300">카드, 카카오페이, 네이버페이, PAYCO 등 다양한 결제수단을 지원합니다.</p>
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl p-4">
+        <p className="text-xs text-blue-600 font-medium mb-1">💳 토스페이먼츠 결제</p>
+        <p className="text-xs text-blue-500">카드, 카카오페이, 네이버페이, PAYCO 등 다양한 결제수단을 지원합니다.</p>
       </div>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-600 dark:text-red-400">
+        <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-600">
           ⚠️ {error}
         </div>
       )}
