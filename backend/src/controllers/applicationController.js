@@ -21,10 +21,30 @@ export const applyLecture = async (req, res, next) => {
     if (lecture.coach_id === student_id)
       return res.status(403).json({ success: false, message: '본인이 등록한 강의는 신청할 수 없습니다.' })
 
-    const [result] = await pool.query(
-      "INSERT INTO applications (lecture_id, student_id, status) VALUES (?, ?, 'approved')",
+    // 기존 신청 내역 확인 (환불된 경우 재신청 허용)
+    const [[existing]] = await pool.query(
+      'SELECT id, status FROM applications WHERE lecture_id = ? AND student_id = ?',
       [lecture_id, student_id]
     )
+
+    let insertId
+    if (existing) {
+      if (existing.status === 'approved') {
+        return res.status(409).json({ success: false, message: '이미 수강 중인 강의입니다.' })
+      }
+      // 환불됐거나 거절된 경우 → 재신청 허용 (UPDATE)
+      await pool.query(
+        "UPDATE applications SET status = 'approved', refunded_at = NULL, refund_reason = NULL, created_at = NOW() WHERE id = ?",
+        [existing.id]
+      )
+      insertId = existing.id
+    } else {
+      const [result] = await pool.query(
+        "INSERT INTO applications (lecture_id, student_id, status) VALUES (?, ?, 'approved')",
+        [lecture_id, student_id]
+      )
+      insertId = result.insertId
+    }
 
     // 학생 정보 조회
     const [[student]] = await pool.query(
@@ -32,10 +52,8 @@ export const applyLecture = async (req, res, next) => {
       [student_id]
     )
 
-    // 영수증 받을 이메일: 결제 시 입력한 이메일 우선, 없으면 계정 이메일 사용
     const targetEmail = (receipt_email && receipt_email.trim()) ? receipt_email.trim() : student.email
 
-    // 이메일 + 디스코드 알림 (비동기 — 실패해도 결제는 성공)
     Promise.all([
       sendEnrollmentEmail({
         to:           targetEmail,
@@ -50,7 +68,7 @@ export const applyLecture = async (req, res, next) => {
       }),
     ]).catch(err => logger.error('[applyLecture] 알림 발송 실패', { error: err.message }))
 
-    res.status(201).json({ success: true, data: { id: result.insertId } })
+    res.status(201).json({ success: true, data: { id: insertId } })
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY')
       return res.status(409).json({ success: false, message: '이미 수강 중인 강의입니다.' })
@@ -92,7 +110,7 @@ export const getCoachApplications = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// GET /api/applications/lecture/:lectureId — 수강자 목록 (시청 시간 기반 진도율)
+// GET /api/applications/lecture/:lectureId
 export const getLectureStudents = async (req, res, next) => {
   try {
     const coach_id   = req.user.id
