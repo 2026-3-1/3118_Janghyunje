@@ -21,30 +21,20 @@ export const applyLecture = async (req, res, next) => {
     if (lecture.coach_id === student_id)
       return res.status(403).json({ success: false, message: '본인이 등록한 강의는 신청할 수 없습니다.' })
 
-    // 기존 신청 내역 확인 (환불된 경우 재신청 허용)
+    // 현재 수강 중인지만 체크 (approved 상태)
     const [[existing]] = await pool.query(
-      'SELECT id, status FROM applications WHERE lecture_id = ? AND student_id = ?',
+      "SELECT id FROM applications WHERE lecture_id = ? AND student_id = ? AND status = 'approved'",
       [lecture_id, student_id]
     )
+    if (existing)
+      return res.status(409).json({ success: false, message: '이미 수강 중인 강의입니다.' })
 
-    let insertId
-    if (existing) {
-      if (existing.status === 'approved') {
-        return res.status(409).json({ success: false, message: '이미 수강 중인 강의입니다.' })
-      }
-      // 환불됐거나 거절된 경우 → 재신청 허용 (UPDATE)
-      await pool.query(
-        "UPDATE applications SET status = 'approved', refunded_at = NULL, refund_reason = NULL, created_at = NOW() WHERE id = ?",
-        [existing.id]
-      )
-      insertId = existing.id
-    } else {
-      const [result] = await pool.query(
-        "INSERT INTO applications (lecture_id, student_id, status) VALUES (?, ?, 'approved')",
-        [lecture_id, student_id]
-      )
-      insertId = result.insertId
-    }
+    // 새 row INSERT (환불 이력은 그대로 보존)
+    const [result] = await pool.query(
+      "INSERT INTO applications (lecture_id, student_id, status) VALUES (?, ?, 'approved')",
+      [lecture_id, student_id]
+    )
+    const insertId = result.insertId
 
     // 학생 정보 조회
     const [[student]] = await pool.query(
