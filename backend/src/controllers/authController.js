@@ -52,6 +52,38 @@ export const login = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
+// POST /api/admin/login — 관리자 전용 로그인 (role 검증 포함)
+export const adminLogin = async (req, res, next) => {
+  try {
+    const { email, password, adminKey } = req.body
+
+    // 관리자 접근 키 검증 (환경변수로 설정)
+    const ADMIN_KEY = process.env.ADMIN_SECRET_KEY || 'gcp-admin-2026'
+    if (adminKey !== ADMIN_KEY)
+      return res.status(403).json({ success: false, message: '관리자 접근 키가 올바르지 않습니다.' })
+
+    if (!email || !password)
+      return res.status(400).json({ success: false, message: '이메일과 비밀번호를 입력해주세요.' })
+
+    const [rows] = await pool.query('SELECT * FROM users WHERE email = ? AND role = ?', [email, 'admin'])
+    if (!rows.length)
+      return res.status(401).json({ success: false, message: '관리자 계정이 아닙니다.' })
+
+    const user = rows[0]
+    const match = await bcrypt.compare(password, user.password)
+    if (!match)
+      return res.status(401).json({ success: false, message: '이메일 또는 비밀번호가 올바르지 않습니다.' })
+
+    const { password: _, ...safeUser } = user
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    )
+    res.json({ success: true, data: { token, user: safeUser } })
+  } catch (err) { next(err) }
+}
+
 // GET /api/users/:id
 export const getUserById = async (req, res, next) => {
   try {

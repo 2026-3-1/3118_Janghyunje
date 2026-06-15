@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { signup, login, getUserById, updateUser } from '../controllers/authController.js'
+import { signup, login, adminLogin, getUserById, updateUser } from '../controllers/authController.js'
 import { getLectures, getMyLectures, getLectureById, createLecture, updateLecture, deleteLecture } from '../controllers/lectureController.js'
 import { applyLecture, getStudentApplications, getCoachApplications, getLectureStudents } from '../controllers/applicationController.js'
 import { getReviews, createReview } from '../controllers/reviewController.js'
@@ -12,14 +12,16 @@ import { getStats, getUsers, getUserDetail, deactivateUser, activateUser, getAdm
 import { getQnAPosts, createQnAPost, getQnAPostById, updateQnAPost, deleteQnAPost, createQnAComment, solveQnA, deleteQnAComment } from '../controllers/qnaController.js'
 import { getFollowStatus, followCoach, unfollowCoach, getFollowers, getFollowingCoaches } from '../controllers/followController.js'
 import { getQnANotifyInfo, getGrowthNotifyInfo, getLectureFollowerNotifyInfo } from '../controllers/notifyController.js'
+import { getMyPayments, requestRefund, getAdminRefunds } from '../controllers/refundController.js'
 import { authenticate, authorize } from '../middleware/errorHandler.js'
 import { validateSignup, validateLogin, validateLecture, validateReview, validatePost, validateQnA } from '../middleware/validators.js'
 
 const router = Router()
 
 // ── 인증 ─────────────────────────────────────────────────────────────
-router.post('/signup', validateSignup, signup)
-router.post('/login',  validateLogin,  login)
+router.post('/signup',       validateSignup, signup)
+router.post('/login',        validateLogin,  login)
+router.post('/admin/login',  adminLogin)          // 관리자 전용 로그인
 router.get('/users/:id',  authenticate, getUserById)
 router.put('/users/:id',  authenticate, updateUser)
 
@@ -51,6 +53,10 @@ router.delete('/cart',            authenticate, clearCart)
 router.post('/progress',                              authenticate, saveProgress)
 router.get('/progress/:lectureId',                    authenticate, getLectureProgress)
 router.get('/progress/:lectureId/content/:contentId', authenticate, getContentProgress)
+
+// ── 결제 내역 & 환불 ─────────────────────────────────────────────────
+router.get('/payments',                              authenticate, authorize('student'), getMyPayments)
+router.post('/payments/:applicationId/refund',       authenticate, authorize('student'), requestRefund)
 
 // ── 성장 분석 ─────────────────────────────────────────────────────────
 router.get('/growth/reports',        authenticate, authorize('student'), getMyReports)
@@ -87,9 +93,9 @@ router.delete('/coaches/:coachId/follow',  authenticate, authorize('student'), u
 router.get('/coaches/:coachId/followers',  authenticate, getFollowers)
 router.get('/follows/coaches',             authenticate, authorize('student'), getFollowingCoaches)
 
-// ── 알림 정보 조회 (프론트에서 EmailJS 발송용) ────────────────────────
-router.get('/notify/qna/:postId',              authenticate, getQnANotifyInfo)
-router.get('/notify/growth/:reportId',         authenticate, getGrowthNotifyInfo)
+// ── 알림 정보 조회 ────────────────────────────────────────────────────
+router.get('/notify/qna/:postId',                  authenticate, getQnANotifyInfo)
+router.get('/notify/growth/:reportId',             authenticate, getGrowthNotifyInfo)
 router.get('/notify/lecture/:lectureId/followers', authenticate, getLectureFollowerNotifyInfo)
 
 // ── 관리자 ───────────────────────────────────────────────────────────
@@ -103,6 +109,7 @@ router.put('/admin/lectures/:id/status',      authenticate, authorize('admin'), 
 router.delete('/admin/lectures/:id',          authenticate, authorize('admin'), deleteAdminLecture)
 router.get('/admin/reviews',                  authenticate, authorize('admin'), getAdminReviews)
 router.delete('/admin/reviews/:id',           authenticate, authorize('admin'), deleteAdminReview)
+router.get('/admin/refunds',                  authenticate, authorize('admin'), getAdminRefunds)
 
 // ── 커뮤니티 ─────────────────────────────────────────────────────────
 router.get('/posts',                getPosts)

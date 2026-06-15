@@ -31,7 +31,6 @@ export default function MyPage() {
     )
   }
 
-  // 결제 완료 = 즉시 approved → approved만 표시
   const approved = applications.filter(a => a.status === 'approved')
 
   return (
@@ -42,10 +41,14 @@ export default function MyPage() {
         <div className={`w-11 h-11 rounded-full ${savedColor} flex items-center justify-center text-base font-bold text-white select-none shrink-0`}>
           {user.nickname?.[0]?.toUpperCase()}
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">{user.nickname}님의 수강 목록</h1>
           <p className="text-xs text-gray-400 dark:text-[#6b7280]">수강 중 {approved.length}개 강의</p>
         </div>
+        <button onClick={() => navigate('/payments')}
+          className="px-3 py-1.5 text-xs font-semibold border border-gray-200 dark:border-[#2a2d3e] text-gray-600 dark:text-slate-300 rounded-lg hover:border-brand-400 hover:text-brand-500 transition-colors shrink-0">
+          💳 결제 내역
+        </button>
       </div>
 
       {/* 목록 */}

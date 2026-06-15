@@ -25,9 +25,11 @@ const CartPage                 = lazy(() => import('./pages/CartPage'))
 const CheckoutPage             = lazy(() => import('./pages/CheckoutPage'))
 const CheckoutSuccessPage      = lazy(() => import('./pages/CheckoutSuccessPage'))
 const CheckoutFailPage         = lazy(() => import('./pages/CheckoutFailPage'))
-const AdminDashboard           = lazy(() => import('./pages/AdminDashboard'))
 const LectureQnAPage           = lazy(() => import('./pages/LectureQnAPage'))
 const LectureQnADetailPage     = lazy(() => import('./pages/LectureQnADetailPage'))
+const PaymentHistoryPage       = lazy(() => import('./pages/PaymentHistoryPage'))
+const AdminLoginPage           = lazy(() => import('./pages/AdminLoginPage'))
+const AdminDashboard           = lazy(() => import('./pages/AdminDashboard'))
 
 function PageLoader() {
   return (
@@ -37,7 +39,6 @@ function PageLoader() {
   )
 }
 
-// 홈, 강의 목록 페이지에서만 GameTabs 표시
 function ConditionalGameTabs() {
   const location = useLocation()
   const show = location.pathname === '/' || location.pathname === '/lectures'
@@ -57,53 +58,84 @@ function RoleRoute({ children, role }) {
   return children
 }
 
+function AdminRoute({ children }) {
+  const { user } = useAuthStore()
+  if (!user) return <Navigate to="/gcp-admin-2026" replace />
+  if (user.role !== 'admin') return <Navigate to="/" replace />
+  return children
+}
+
+// 관리자 경로인지 확인 후 레이아웃 분기
+function AppInner() {
+  const location = useLocation()
+  const isAdmin  = location.pathname.startsWith('/gcp-admin-2026')
+
+  if (isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-950">
+        <Suspense fallback={<div className="min-h-screen bg-gray-950 flex items-center justify-center"><div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"/></div>}>
+          <Routes>
+            <Route path="/gcp-admin-2026"           element={<AdminLoginPage />} />
+            <Route path="/gcp-admin-2026/dashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+          </Routes>
+        </Suspense>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-[#0d0f14] text-gray-900 dark:text-slate-100">
+      <Navbar />
+      <ConditionalGameTabs />
+      <main className="flex-1">
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* 공개 */}
+            <Route path="/"              element={<MainPage />} />
+            <Route path="/lectures"      element={<LectureListPage />} />
+            <Route path="/lectures/:id"  element={<LectureDetailPage />} />
+            <Route path="/login"         element={<LoginPage />} />
+            <Route path="/register"      element={<RegisterPage />} />
+            <Route path="/community"     element={<CommunityPage />} />
+            <Route path="/community/:id" element={<CommunityDetailPage />} />
+
+            {/* 결제 */}
+            <Route path="/checkout/success" element={<PrivateRoute><CheckoutSuccessPage /></PrivateRoute>} />
+            <Route path="/checkout/fail"    element={<CheckoutFailPage />} />
+
+            {/* 로그인 필요 */}
+            <Route path="/mypage"         element={<PrivateRoute><MyPage /></PrivateRoute>} />
+            <Route path="/profile"        element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+            <Route path="/cart"           element={<PrivateRoute><CartPage /></PrivateRoute>} />
+            <Route path="/checkout"       element={<PrivateRoute><CheckoutPage /></PrivateRoute>} />
+            <Route path="/growth"         element={<PrivateRoute><GrowthPage /></PrivateRoute>} />
+            <Route path="/payments"       element={<PrivateRoute><PaymentHistoryPage /></PrivateRoute>} />
+            <Route path="/community/write"    element={<PrivateRoute><CommunityWritePage /></PrivateRoute>} />
+            <Route path="/community/edit/:id" element={<PrivateRoute><CommunityWritePage /></PrivateRoute>} />
+            <Route path="/lectures/:lectureId/contents"    element={<PrivateRoute><LectureContentPage /></PrivateRoute>} />
+            <Route path="/lectures/:lectureId/qna"         element={<PrivateRoute><LectureQnAPage /></PrivateRoute>} />
+            <Route path="/lectures/:lectureId/qna/:postId" element={<PrivateRoute><LectureQnADetailPage /></PrivateRoute>} />
+
+            {/* 코치 전용 */}
+            <Route path="/coach/dashboard"           element={<RoleRoute role="coach"><CoachDashboard /></RoleRoute>} />
+            <Route path="/coach/lecture/new"          element={<RoleRoute role="coach"><LectureRegisterPage /></RoleRoute>} />
+            <Route path="/coach/lecture/edit/:id"     element={<RoleRoute role="coach"><LectureRegisterPage /></RoleRoute>} />
+            <Route path="/lectures/:lectureId/manage" element={<RoleRoute role="coach"><LectureContentManagePage /></RoleRoute>} />
+
+            {/* /admin 접근 시 관리자 로그인으로 리다이렉트 */}
+            <Route path="/admin" element={<Navigate to="/gcp-admin-2026" replace />} />
+          </Routes>
+        </Suspense>
+      </main>
+      <Footer />
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-[#0d0f14] text-gray-900 dark:text-slate-100">
-        <Navbar />
-        <ConditionalGameTabs />
-        <main className="flex-1">
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              {/* 공개 */}
-              <Route path="/"              element={<MainPage />} />
-              <Route path="/lectures"      element={<LectureListPage />} />
-              <Route path="/lectures/:id"  element={<LectureDetailPage />} />
-              <Route path="/login"         element={<LoginPage />} />
-              <Route path="/register"      element={<RegisterPage />} />
-              <Route path="/community"     element={<CommunityPage />} />
-              <Route path="/community/:id" element={<CommunityDetailPage />} />
-
-              {/* 결제 */}
-              <Route path="/checkout/success" element={<PrivateRoute><CheckoutSuccessPage /></PrivateRoute>} />
-              <Route path="/checkout/fail"    element={<CheckoutFailPage />} />
-
-              {/* 로그인 필요 */}
-              <Route path="/mypage"    element={<PrivateRoute><MyPage /></PrivateRoute>} />
-              <Route path="/profile"   element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-              <Route path="/cart"      element={<PrivateRoute><CartPage /></PrivateRoute>} />
-              <Route path="/checkout"  element={<PrivateRoute><CheckoutPage /></PrivateRoute>} />
-              <Route path="/growth"    element={<PrivateRoute><GrowthPage /></PrivateRoute>} />
-              <Route path="/community/write"    element={<PrivateRoute><CommunityWritePage /></PrivateRoute>} />
-              <Route path="/community/edit/:id" element={<PrivateRoute><CommunityWritePage /></PrivateRoute>} />
-              <Route path="/lectures/:lectureId/contents"    element={<PrivateRoute><LectureContentPage /></PrivateRoute>} />
-              <Route path="/lectures/:lectureId/qna"         element={<PrivateRoute><LectureQnAPage /></PrivateRoute>} />
-              <Route path="/lectures/:lectureId/qna/:postId" element={<PrivateRoute><LectureQnADetailPage /></PrivateRoute>} />
-
-              {/* 코치 전용 */}
-              <Route path="/coach/dashboard"            element={<RoleRoute role="coach"><CoachDashboard /></RoleRoute>} />
-              <Route path="/coach/lecture/new"           element={<RoleRoute role="coach"><LectureRegisterPage /></RoleRoute>} />
-              <Route path="/coach/lecture/edit/:id"      element={<RoleRoute role="coach"><LectureRegisterPage /></RoleRoute>} />
-              <Route path="/lectures/:lectureId/manage"  element={<RoleRoute role="coach"><LectureContentManagePage /></RoleRoute>} />
-
-              {/* 관리자 전용 */}
-              <Route path="/admin" element={<RoleRoute role="admin"><AdminDashboard /></RoleRoute>} />
-            </Routes>
-          </Suspense>
-        </main>
-        <Footer />
-      </div>
+      <AppInner />
     </BrowserRouter>
   )
 }
